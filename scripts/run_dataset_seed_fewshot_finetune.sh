@@ -1,42 +1,44 @@
 #!/bin/bash
 
-prefix="LinearProbing"
+# Define arrays of values for each parameter
+
+prefix="fewshot_finetune"
 
 # methods=("mixup" "saliencymix" "CMO" "cutmix-fs" "resizemix" "CMLP" "probing" "finetune" "FLYP" "cutmix" "fixmatch")
-methods=("probing")
+methods=("finetune")
 
 # data_sources=("fewshot" "retrieved" "fewshot+retrieved" "fewshot+unlabeled" "fewshot+retrieved+unlabeled")
 data_sources=("fewshot")
 
-# shot_values=(4 8 16)
+# shot_values=(16 8 4)
 shot_values=(16)
-# shot_values=(4)
 
 batch_size=32
 
 loss="CE"
 
-epochs=50
+epochs=20
 
 model_cfgs=(
     # "vitb32_imagenet_pretrained" \
     # "resnet50_scratch" \
     "resnet50_imagenet_pretrained" \
-    # "resnet50_inat_pretrained" \
-    # "vitb32_openclip_laion400m" \
+    "resnet50_inat_pretrained" \
+    "vitb32_openclip_laion400m" \
     # "vitb16_openclip_laion400m" \
-    #  "resnet50_clip" \
-    # "dinov2_vits14_reg" \
-    # "dinov2_vitb14_reg" \
-    # "dinov2_vitl14_reg" \
-    # "dinov2_vitg14_reg" \
-    # "dinov3_vitb16_reg" \
+    # "resnet50_clip" \
     # "vitb32_clip_inat" \
     # "vitb32_clip_nabirds" \
     # "vitb32_clip_cub" \
+    # "dinov2_vits14_reg" \
+    "dinov2_vitb14_reg" \
+    # "dinov2_vitl14_reg" \
+    # "dinov2_vitg14_reg" \
+    # "dinov3_vitb16_reg" \
     )
 
 log_mode="both"
+
 
 #------------------------------
 # DO NOT MODIFY BELOW THIS LINE !!!
@@ -47,49 +49,69 @@ for model_cfg in "${model_cfgs[@]}"; do
     # update learning rate based on the first item of the model_cfg
     first_item=$(echo $model_cfg | cut -d'_' -f1)
     second_item=$(echo $model_cfg | cut -d'_' -f2)
-    echo "Model Config: $model_cfg"
-    # echo "First Item: $first_item"
-    # echo "Second Item: $second_item"
+    echo "Model: $model_cfg"
+    # echo "First item: $first_item"
+    # echo "Second item: $second_item"
 
-    if [[ "$first_item" = "resnet50" && ( "$second_item" = "imagenet" || "$second_item" = "inat" ) ]]; then
+    # resnet50_imagenet_pretrained
+    if [ "$first_item" = "resnet50" ] && [ "$second_item" = "imagenet" ]; then
         lr_classifier=1e-3
-        wd=1e-2
+        lr_backbone=1e-3
+        wd=1e-4
         cls_inits=("random")
-        optim="AdamW"
+        optim="SGD"
         temp_scheme_list=('none')
-        temperature_list=(1.0)
+        temperature_list=(1.0)        
 
+    # resnet50_inat_pretrained
+    elif [ "$first_item" = "resnet50" ] && [ "$second_item" = "inat" ]; then
+        lr_classifier=1e-3
+        lr_backbone=1e-3
+        wd=1e-4
+        cls_inits=("random")
+        optim="SGD"
+        temp_scheme_list=('none')
+        temperature_list=(1.0)          
+
+    # vitb32_imagenet_pretrained
     elif [ "$first_item" = "vitb32" ] && [ "$second_item" = "imagenet" ]; then
         lr_classifier=1e-3
-        wd=1e-2
+        lr_backbone=1e-3
+        wd=1e-4
         cls_inits=("random")
-        optim="AdamW"
+        optim="SGD"
         temp_scheme_list=('none')
-        temperature_list=(1.0)
+        temperature_list=(1.0)          
 
+    # resnet50_clip
     elif [ "$first_item" = "resnet50" ] && [ "$second_item" = "clip" ]; then
-        lr_classifier=1e-3
+        lr_classifier=1e-4
+        lr_backbone=1e-6
         wd=1e-2
         cls_inits=("REAL-Prompt")
         optim="AdamW"
+        temp_scheme_list=('fewshot+retrieved+unlabeled') # has to tune temperature!!
+        temperature_list=(0.07)        
 
+    # openclip or clip
     elif [[ "$first_item" = "vitb32" || "$first_item" = "vitb16" ]] && [ "$second_item" = "openclip" ]; then
         lr_classifier=1e-4
+        lr_backbone=1e-6
         wd=1e-2
         cls_inits=("REAL-Prompt")
         optim="AdamW"
         temp_scheme_list=('fewshot+retrieved+unlabeled') # has to tune temperature!!
         temperature_list=(0.07)
-        # temp_scheme_list=('none') # this leads to poor performance of 43.9, which is barely improved above zero-shot 43.8
-        # temperature_list=(1.0)
 
+    # DINOv2 or DINOv3
     elif [[ "$first_item" = "dinov2" || "$first_item" = "dinov3" ]]; then
         lr_classifier=1e-4
+        lr_backbone=1e-6
         wd=1e-2
         cls_inits=("random")
         optim="AdamW"
         temp_scheme_list=('none')
-        temperature_list=(1.0)        
+        temperature_list=(1.0)  
 
     else
         echo "Model not found"
@@ -109,6 +131,7 @@ for model_cfg in "${model_cfgs[@]}"; do
     else
         script="main_ssl.py"
     fi
+
 
     # Check if command-line arguments were provided
     if [ "$#" -ge 2 ]; then
@@ -146,22 +169,23 @@ for model_cfg in "${model_cfgs[@]}"; do
                             for temp_scheme in "${temp_scheme_list[@]}"; do
                                 for temperature in "${temperature_list[@]}"; do
 
-                                    echo "Running: $script $model_cfg $method $dataset $data_source $init $shots $seed"
+                                    echo "Running: $script $dataset $method $loss $model_cfg $data_source $init $shots $seed $retrieval_split $unlabeled_in_split"
+
+                                    # set the cls_path based on linear probing learned weights
+                                    cls_path="output/LinearProbing_${model_cfg}_50epochs/output_${dataset}/${dataset}_probing_fewshot_${init}_${shots}shots_seed${seed}/stage1_model_best.pth"
 
                                     # Run the script and capture the output
-                                    output=$(python -W ignore "$script" --dataset "$dataset" --method "$method" \
-                                            --data_source "$data_source"  --cls_init "$init" \
+                                    output=$(python -W ignore "$script" --prefix "$prefix" --dataset "$dataset" --method "$method" \
+                                            --data_source "$data_source" --cls_init "$init" \
                                             --shots "$shots" --seed "$seed" --epochs "$epochs" --bsz "$batch_size" \
-                                            --lr_classifier "$lr_classifier"  \
-                                            --wd "$wd" --optim "$optim" --loss_name "$loss"\
+                                            --lr_classifier "$lr_classifier"  --lr_backbone "$lr_backbone" --wd "$wd" \
+                                            --optim "$optim" --loss_name "$loss"\
                                             --log_mode "$log_mode" \
-                                            --model_cfg "$model_cfg" --folder "$output_folder" \
                                             --temp_scheme "$temp_scheme" --temperature "$temperature" \
-                                            --skip_stage2 \
-                                            --recal_fea \
-                                            --recal_prompt \
+                                            --model_cfg "$model_cfg" --folder "$output_folder" \
                                             --check_zeroshot \
-                                            # --scale_text_embedding \
+                                            --skip_stage2 \
+                                            --cls_path "$cls_path" \
                                             )
 
                                     # Print the output to the console
@@ -171,6 +195,7 @@ for model_cfg in "${model_cfgs[@]}"; do
                                     echo "$output" >> "$output_file"
 
                                     echo ""
+
                                 done
                             done
                         done

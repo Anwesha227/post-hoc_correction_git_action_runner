@@ -17,7 +17,7 @@ openai_key.txt
 foundation_ssl/unlabeled_images_sample/
 
 # tian_log.md
-run.slurm
+# run.slurm
 moco/
 
 tSNE/
