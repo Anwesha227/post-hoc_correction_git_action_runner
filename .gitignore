@@ -226,3 +226,13 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+.env
+
+
+/data/semi-aves/topk/swift_stage3_vitb32_openclip_laion400m_semi-aves_16_1_topk_test_predictions.csv
+
+mllm-inference/sem-aves/error_logs
+mllm-inference/sem-aves/mllm_output
+
+/datasets/semi-aves/test
