@@ -56,8 +56,8 @@ bash scripts/run_dataset_seed_probing.sh semi-aves 1
 # few-shot finetuning
 bash scripts/run_dataset_seed_fewshot_finetune.sh semi-aves 1
 
-# obtain predictions on test set for a pretrained model
-
+# obtain top-k predictions on test set for a pretrained model
+bash scripts/run_dataset_seed_topk.sh semi-aves 1
 
 # query MLLM for posthoc correction
 

@@ -22,8 +22,8 @@ model_cfgs=(
     # "vitb32_imagenet_pretrained" \
     # "resnet50_scratch" \
     # "resnet50_imagenet_pretrained" \
-    # "resnet50_inat_pretrained" \
-    "vitb32_openclip_laion400m" \
+    "resnet50_inat_pretrained" \
+    # "vitb32_openclip_laion400m" \
     # "vitb16_openclip_laion400m" \
     #  "resnet50_clip" \
     # "dinov2_vits14_reg" \

@@ -178,6 +178,7 @@ def parse_args():
 
     parser.add_argument('--get_pseudolabels', action='store_true', help='get the pseudo-labels and confidence for unlabeled data.')
     parser.add_argument('--check_confidence', action='store_true', help='get the confidence for test data.')
+    parser.add_argument('--topk_predictions', action='store_true', help='get the top-k predictions for test data.')
 
 
     # other

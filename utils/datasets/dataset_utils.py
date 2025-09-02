@@ -173,7 +173,8 @@ class MyDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, i):
-        img = self.loader(self.data[i][0])
+        path = self.data[i][0]
+        img = self.loader(path)
         label = self.data[i][1]
         source = self.data[i][2] # 0 for retrived data, 1 for fewshot data
         img = self.transform(img)
@@ -191,7 +192,9 @@ class MyDataset(Dataset):
         # print('tokenized_text:', tokenized_text.shape)
         # stop
 
-        return img, label, tokenized_text, source
+        # return img, label, tokenized_text, source
+        return img, label, path, source
+
 
 
 

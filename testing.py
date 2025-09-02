@@ -18,9 +18,13 @@ from utils.prompt import prompt_maker
 from utils.features import extract_test_feats
 # from tqdm import tqdm
 import pandas as pd
+import torch.nn.functional as F
+import json
 
 
 def load_model(args, logger, model, test_loader=None, classifier_head=None, is_encoder=True):
+
+    is_encoder = (args.model_cfg.split('_')[1] == 'openclip' or args.model_cfg.split('_')[1] == 'clip')
 
     logger.info(f'Loading model from: {args.model_path}')
     ckpt = torch.load(args.model_path)
@@ -28,25 +32,19 @@ def load_model(args, logger, model, test_loader=None, classifier_head=None, is_e
     # for WSFT ensembled model
     # model.load_state_dict(ckpt['wsft_backbone'])
     # classifier_head.load_state_dict(ckpt['wsft_head'])
-
+    
+    logit_scale = 0.0
     if 'clip' in ckpt:
         model.load_state_dict(ckpt['clip'])
         classifier_head.load_state_dict(ckpt['head'])
-
-        # classifier_head.load_state_dict(ckpt['best_tau_head'])
-        # classifier_head.load_state_dict(ckpt['wsft_head'])
-
-        # file_path = 'output/FT-CE_fewshot15+real_t2t500-40eps_probing_semi-aves_vitb32_openclip_laion400m_c-name/best_tau_head_weights.pth'
-        # best_tau_head = torch.load(file_path)
-        # classifier_head.load_state_dict(best_tau_head)
-
+        logit_scale = ckpt.get('logit_scale')
+        logger.info(f'Loaded logit_scale: {logit_scale.item()}')
         if 'test_acc' in ckpt:
             logger.info(f'ckpt[test_acc]: {ckpt["test_acc"]}')
 
     else:
         print('ckpt.keys():', ckpt.keys())
-        classifier_head.load_state_dict(ckpt['best_tau_head'])
-        # raise ValueError('No model weights found in the checkpoint.')
+        raise ValueError('No model weights found in the checkpoint.')
 
     del ckpt
 
@@ -54,13 +52,15 @@ def load_model(args, logger, model, test_loader=None, classifier_head=None, is_e
     if test_loader is not None:
         model_test_acc, _, _ = validate(args, data_loader=test_loader, model=model,
                                         logger=logger,
-                                        loss=args.loss, logit_scale=args.logit_scale,
+                                        loss=args.loss, logit_scale=logit_scale,
                                         classifier_head=classifier_head,
                                         dataset=args.dataset,
                                         device=args.device,
                                         is_encoder=is_encoder)
 
         logger.info(f"Loaded Model Test Acc: {round(model_test_acc, 3)}")
+    
+    return logit_scale
 
 
 def calculate_scores(confusion_matrix):
@@ -493,6 +493,90 @@ def extract_confidence(args, model, classifier_head, test_loader):
 
     args.logger.info(f'Extracted confidence (max_prob after softmax) saved to: {out_file}')
 
+
+def extract_topk_predictions(args, model, classifier_head, data_loader,
+                            logit_scale, device='cuda'):
+    
+    is_encoder = (args.model_cfg.split('_')[1] == 'openclip' or args.model_cfg.split('_')[1] == 'clip')
+
+    model.eval()
+    classifier_head.eval()
+
+    val_acc = 0
+    val_count = 0
+    # num_classes = classifier_head.num_classes
+    topk_pred = dict()
+
+    with torch.no_grad():
+        test_id = 0
+        for i, val_data in enumerate(data_loader):
+            inputs, labels, paths, source = val_data
+            inputs = inputs.to(device)
+
+            if not args.pre_extracted:
+                if is_encoder:
+                    image_features = model.encode_image(inputs)
+                    image_features /= image_features.norm(dim=-1, keepdim=True)
+                else:
+                    image_features = model(inputs)
+            else:
+                image_features = inputs
+
+            if classifier_head:
+                logit = classifier_head(image_features)
+            else:
+                # logit, _ = model(inputs, texts)
+                raise NotImplementedError
+
+            preds = torch.argmax(logit, dim=1).cpu()           
+
+            val_acc += torch.sum(preds == labels).item()
+            val_count += labels.size(0)
+
+            # Get top-k indices and logits
+            topk_logits, topk_indices = torch.topk(logit, k=10, dim=1)
+
+            # Convert logits to probabilities with softmax
+            if is_encoder:
+                # for CLIP and OpenCLIP, need to scale logits with learned temperature
+                T = 1.0 / logit_scale.exp()
+                probs = F.softmax(logit / T, dim=1)
+            else:
+                probs = F.softmax(logit, dim=1)
+
+            # Extract top-k probabilities (confidence scores)
+            topk_probs = torch.gather(probs, 1, topk_indices)
+
+            # add each test image to the top-k predictions dict
+            for j in range(topk_probs.size(0)):
+                image_path = paths[j]
+                pred = preds[j].item()
+                truth = labels[j].item()
+                topk_cls_list = topk_indices[j].cpu().numpy().tolist()
+                topk_probs_list = topk_probs[j].cpu().numpy().tolist()
+                
+                topk_pred[test_id] = {
+                    'image_path': str(image_path),
+                    'pred': int(pred),
+                    'label': int(truth),
+                    'topk_cls': [int(x) for x in topk_cls_list],
+                    'topk_probs': [round(float(x),2) for x in topk_probs_list]
+                }
+                test_id += 1
+
+    # average class validation accuracy
+    val_acc = (val_acc/val_count)*100
+    args.logger.info(f'Test Acc: {round(val_acc, 3)}')
+
+    # save the top-k predictions dict to a json file
+    predicted_label_file = f'output/topk/fewshot_finetune_{args.model_cfg}_{args.dataset}_{args.shots}_{args.seed}_topk_test_predictions.json'
+
+    with open(predicted_label_file, 'w') as f:
+        json.dump(topk_pred, f, indent=4)
+
+    args.logger.info(f'Top-k predictions saved to: {predicted_label_file}')
+
+    return val_acc
 
 
 def extract_pseudolabels(args, model, classifier_head, data_loader, logger,

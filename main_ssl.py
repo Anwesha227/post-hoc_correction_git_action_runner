@@ -34,7 +34,7 @@ import torch.nn as nn
 from torchvision import datasets, models, transforms
 from torch.utils.data import DataLoader
 from utils.datasets.dataset_utils import load_dataset
-from testing import extract_confidence
+from testing import extract_confidence, load_model, extract_topk_predictions
 
 
 
@@ -352,12 +352,22 @@ def run_stage1_finetuning2(args, logger, model, classifier_head, data_transforms
     if args.skip_stage1:
         return -1, None, test_loader_copy
 
+    if args.model_path is not None:
+        logit_scale = load_model(args, logger, model, test_loader, classifier_head)
+
     # check zeroshot acc
     args.pre_extracted = False
     if args.check_zeroshot or args.method == 'zeroshot':
         logger.info(f"Check Zero-shot Acc ......")
         run_zeroshot(args, test_loader, model, logger, loss, logit_scale, classifier_head, False)
     if args.zeroshot_only or args.method == 'zeroshot':
+        exit()
+
+
+    # get the predictions on the test set for post-hoc correction
+    if args.topk_predictions:
+        logger.info(f"Extracting top-k predictions ......")
+        extract_topk_predictions(args, model, classifier_head, test_loader, logit_scale)
         exit()
 
     # get the confidence on the test set of different pretrained models
@@ -773,7 +783,8 @@ if __name__ == '__main__':
 
         ## loading inat pre-trained model
         model_ft = torch.nn.DataParallel(model_ft)
-        checkpoint_filename = '/scratch/group/real-fs/model_ckpts/inat_resnet50.pth.tar'
+        # checkpoint_filename = '/scratch/group/real-fs/model_ckpts/inat_resnet50.pth.tar'
+        checkpoint_filename = 'checkpoints/inat_resnet50.pth.tar'
         # print("=> loading checkpoint '{}'".format(checkpoint_filename))
         checkpoint = torch.load(checkpoint_filename)
         del checkpoint['state_dict']['module.fc.bias']

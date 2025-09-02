@@ -5,7 +5,7 @@ import time
 import numpy as np
 from utils.parser import parse_args
 from utils.logger import set_logger
-from testing import validate, load_model, extract_pseudolabels, extract_confidence
+from testing import validate, load_model, extract_pseudolabels, extract_confidence, extract_topk_predictions
 from testing import calculate_scores
 from utils.datasets.dataset_utils import NUM_CLASSES_DICT
 from utils.prompt import set_prompt
@@ -221,8 +221,8 @@ def run_stage1_finetuning(args, logger, model, preprocess, tokenized_text_prompt
     if args.skip_stage1:
         return -1, None, test_loader_copy, results
 
-    # if args.model_path is not None:
-    #     load_model(args, logger, model, test_loader, classifier_head)
+    if args.model_path is not None:
+        logit_scale = load_model(args, logger, model, test_loader, classifier_head)
 
     # check zeroshot acc
     if args.check_zeroshot or args.method == 'zeroshot':
@@ -232,6 +232,12 @@ def run_stage1_finetuning(args, logger, model, preprocess, tokenized_text_prompt
         #    load_model(args, logger, model, test_loader, classifier_head)
 
     if args.zeroshot_only or args.method == 'zeroshot':
+        exit()
+
+    # get the predictions on the test set for post-hoc correction
+    if args.topk_predictions:
+        logger.info(f"Extracting top-k predictions ......")
+        extract_topk_predictions(args, model, classifier_head, test_loader, logit_scale)
         exit()
 
     # get the confidence on the test set of different pretrained models

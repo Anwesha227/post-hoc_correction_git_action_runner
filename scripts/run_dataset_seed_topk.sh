@@ -2,7 +2,7 @@
 
 # Define arrays of values for each parameter
 
-prefix="fewshot_finetune"
+prefix="topk"
 
 # methods=("mixup" "saliencymix" "CMO" "cutmix-fs" "resizemix" "CMLP" "probing" "finetune" "FLYP" "cutmix" "fixmatch")
 methods=("finetune")
@@ -22,7 +22,7 @@ epochs=20
 model_cfgs=(
     # "vitb32_imagenet_pretrained" \
     # "resnet50_scratch" \
-    # "resnet50_imagenet_pretrained" \
+    "resnet50_imagenet_pretrained" \
     "resnet50_inat_pretrained" \
     # "vitb32_openclip_laion400m" \
     # "vitb16_openclip_laion400m" \
@@ -31,10 +31,10 @@ model_cfgs=(
     # "vitb32_clip_nabirds" \
     # "vitb32_clip_cub" \
     # "dinov2_vits14_reg" \
-    # "dinov2_vitb14_reg" \
+    "dinov2_vitb14_reg" \
     # "dinov2_vitl14_reg" \
     # "dinov2_vitg14_reg" \
-    # "dinov3_vitb16" \
+    "dinov3_vitb16" \
     )
 
 log_mode="both"
@@ -171,8 +171,9 @@ for model_cfg in "${model_cfgs[@]}"; do
 
                                     echo "Running: $script $dataset $method $loss $model_cfg $data_source $init $shots $seed $retrieval_split $unlabeled_in_split"
 
-                                    # set the cls_path based on linear probing learned weights
-                                    cls_path="output/LinearProbing_${model_cfg}_50epochs/output_${dataset}/${dataset}_probing_fewshot_${init}_${shots}shots_seed${seed}/stage1_model_best.pth"
+                                    # set the model_path based on few-shot finetuned models
+                                               #output/fewshot_finetune_vitb32_openclip_laion400m_20epochs/output_semi-aves/fewshot_finetune_semi-aves_finetune_fewshot_REAL-Prompt_16shots_seed1/stage1_model_best.pth
+                                    model_path="output/fewshot_finetune_${model_cfg}_20epochs/output_${dataset}/fewshot_finetune_${dataset}_finetune_fewshot_${init}_${shots}shots_seed${seed}/stage1_model_best.pth"
 
                                     # Run the script and capture the output
                                     output=$(python -W ignore "$script" --prefix "$prefix" --dataset "$dataset" --method "$method" \
@@ -183,9 +184,11 @@ for model_cfg in "${model_cfgs[@]}"; do
                                             --log_mode "$log_mode" \
                                             --temp_scheme "$temp_scheme" --temperature "$temperature" \
                                             --model_cfg "$model_cfg" --folder "$output_folder" \
-                                            --check_zeroshot \
                                             --skip_stage2 \
-                                            --cls_path "$cls_path" \
+                                            --model_path "$model_path" \
+                                            --topk_predictions \
+                                            # --cls_path "$cls_path" \
+                                            # --check_zeroshot \
                                             )
 
                                     # Print the output to the console
