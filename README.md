@@ -26,6 +26,12 @@ git clone https://github.com/facebookresearch/dinov3.git
 # install gdown for downloading datasets
 pip install gdown
 
+# For MLLM inference (for instance Qwen) using API, you need to add your API key to a .env file.
+Create a .env file in your main project directory.
+Add the API key (NEBIUS_API_KEY or OPENROUTER_API_KEY) to the file as follows (this is an example):
+NEBIUS_API_KEY = "your API key here"
+Save the file.
+
 ```
 
 ### Dataset Prepraration
