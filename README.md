@@ -36,6 +36,7 @@ Save the file.
 Download Ollama here: https://ollama.com/download
 Pull the model as shown in this example: ollama pull qwen2.5vl:7b
 Run sanity check: ollama run qwen2.5vl:7b "Explain the difference between hawks and falcons."
+Within your environment, run: pip install ollama
 
 ```
 
