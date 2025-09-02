@@ -32,6 +32,11 @@ Add the API key (NEBIUS_API_KEY or OPENROUTER_API_KEY) to the file as follows (t
 NEBIUS_API_KEY = "your API key here"
 Save the file.
 
+# For MLLM inference using Ollama (local runtime + model manager)
+Download Ollama here: https://ollama.com/download
+Pull the model as shown in this example: ollama pull qwen2.5vl:7b
+Run sanity check: ollama run qwen2.5vl:7b "Explain the difference between hawks and falcons."
+
 ```
 
 ### Dataset Prepraration
