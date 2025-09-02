@@ -12,7 +12,7 @@ from utils.prompt import set_prompt
 import copy
 from utils.losses import set_loss
 import torch.nn.functional as F
-import cv2
+# import cv2
 from utils.training import set_training_seed, train_probing, run_zeroshot, train_CMLP, \
     train_dataset_cls, train_ce, train_cutmix, train_flyp, train_ce_mixed, train_fixmatch, \
     train_fixmatch_cutmix, train_fixmatch_contrastive, \

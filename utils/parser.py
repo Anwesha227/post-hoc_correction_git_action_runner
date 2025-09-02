@@ -29,7 +29,7 @@ def parse_args():
                                  'dinov2_vitl14_reg',
                                  'dinov2_vitg14_reg',
                                 #  'dinov2_vits14_reg_lc',
-                                 'dinov3_vitb16_reg',
+                                 'dinov3_vitb16',
                                  'vitb32_clip_cub',
                                  'vitb32_clip_inat',
                                  'vitb32_clip_nabirds'

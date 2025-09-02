@@ -14,7 +14,7 @@ from utils.prompt import set_prompt
 import copy
 from utils.losses import set_loss
 import torch.nn.functional as F
-import cv2
+# import cv2
 from utils.training import set_training_seed, train_probing, run_zeroshot, train_CMLP, \
     train_dataset_cls, train_ce, train_cutmix, train_flyp, train_ce_mixed, train_fixmatch, train_debiasPL, \
     train_ce_multitask, train_mixup, train_mixup_fs, train_cutmix_fs, train_resizemix, \
@@ -41,13 +41,16 @@ from testing import extract_confidence
 # import os
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
-dinvo_fts = {
+dinvo_v2_fts = {
     "vits14": 384,
     "vitb14": 768,
     "vitl14": 1024,
     "vitg14": 1536,
 }
 
+dinvo_v3_fts = {
+    "vitb16": 768,
+}
 
 def run_tau_normalization(args, best_head, best_model, val_loader, test_loader, logit_scale, logger):
 
@@ -791,12 +794,12 @@ if __name__ == '__main__':
     elif cfgs[0] == 'dinov2':
         model_ft = DinoVisionTransformer_v2(args.model_cfg)
         logger.info(f'Loaded model: {args.model_cfg}')
-        num_ftrs = dinvo_fts[cfgs[1]]
+        num_ftrs = dinvo_v2_fts[cfgs[1]]
 
     elif cfgs[0] == 'dinov3':
         model_ft = DinoVisionTransformer_v3(args.model_cfg)
         logger.info(f'Loaded model: {args.model_cfg}')
-        num_ftrs = dinvo_fts[cfgs[1]]
+        num_ftrs = dinvo_v3_fts[cfgs[1]]
 
     else:
         raise NotImplementedError(f"Model {args.model_cfg} not implemented.")

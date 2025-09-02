@@ -1,5 +1,6 @@
 checkpoints/
 dinov3/
+config.yml
 
 results/
 results_backup/

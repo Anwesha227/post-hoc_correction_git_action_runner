@@ -92,11 +92,16 @@ class DinoVisionTransformer_v3(nn.Module):
         CHECKPOINT_PATH = "checkpoints/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
 
         dinov3_model = torch.hub.load(REPO_DIR, model_cfg, source='local', weights=CHECKPOINT_PATH)
-        for name, module in dinov3_model.named_modules():
-            print(name)
-        print(f'model_ft.linear_head.in_features: {dinov3_model.linear_head.in_features}')
-        print(f'model_ft.linear_head.out_features: {dinov3_model.linear_head.out_features}')
-        exit()
+        # for name, module in dinov3_model.named_modules():
+        #     print(name)
+
+        # print the dimensions of the features
+        # dummy = torch.randn(1, 3, 224, 224)  # adjust shape as needed
+        # with torch.no_grad():
+        #     out = dinov3_model(dummy)
+        # print(out.shape) # (1, 768)
+        # exit()
+
 
         self.transformer = deepcopy(dinov3_model)
         # self.classifier = nn.Sequential(nn.Linear(384, 256), nn.ReLU(), nn.Linear(256, 1))

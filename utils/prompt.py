@@ -5,8 +5,10 @@ from utils import features
 
 def get_prompts_tensors(args, model, tokenizer, logger):
 
-    dataset_root = f'{args.retrieved_path}/{args.dataset}'
+    # dataset_root = f'{args.retrieved_path}/{args.dataset}'
+    dataset_root = f'data/{args.dataset}'
     metric_fn = f'{dataset_root}/{args.dataset}_metrics-{args.database.upper()}.json'
+
     if args.dataset == 'dtd_selected':
         metric_fn = f'data/dtd_selected/{args.dataset}_metrics-{args.database.upper()}_new_idx.json'
 
