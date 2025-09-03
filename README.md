@@ -59,7 +59,19 @@ bash scripts/run_dataset_seed_fewshot_finetune.sh semi-aves 1
 # obtain top-k predictions on test set for a pretrained model
 bash scripts/run_dataset_seed_topk.sh semi-aves 1
 
-# query MLLM for posthoc correction
+# query MLLM for posthoc correction using Nebius API (for Qwen2.5-VL-72B)
+Navigate to correct directory corresponding to the dataset: cd mllm-inference/semi-aves
+Make sure script is executable by running: chmod +x scripts/run_qwen.sh 
+Then run: scripts/run_qwen.sh --backend nebius
+
+# query MLLM for posthoc correction locally using Ollama (for Qwen2.5-VL-7B)
+Navigate to correct directory corresponding to the dataset: cd mllm-inference/semi-aves
+Make sure script is executable by running: chmod +x scripts/run_qwen.sh 
+First run : ollama serve &
+Then run: scripts/run_qwen.sh --backend ollama --ollama-model qwen2.5vl:7b
+
+
+
 
 
 ```
