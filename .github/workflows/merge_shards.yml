@@ -1,0 +1,76 @@
+name: Merge prior shard outputs
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run ID to pull artifacts from (Actions URL ends with /runs/<RUN_ID>)"
+        required: true
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts from the specified run
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          run_id: ${{ github.event.inputs.run_id }}
+          path: merged_inputs
+          # leave 'name' empty to fetch all artifacts from that run
+
+      - name: List downloaded files
+        run: |
+            echo "Artifacts downloaded under merged_inputs/:"
+            find merged_inputs -maxdepth 3 -type f | sed 's/^/  /'
+
+      - name: Merge CSVs into original wrapper filename
+        run: |
+          set -euxo pipefail
+          shopt -s nullglob
+          # find only shard CSVs (ignore any previous merged.csv)
+          mapfile -t CSVs < <(find merged_inputs -type f -name '*_shard*.csv' | sort)
+          if [ "${#CSVs[@]}" -eq 0 ]; then
+            echo "No shard CSVs found (looking for *_shard*.csv)"; exit 1
+          fi
+          first="${CSVs[0]}"
+          bn="$(basename "$first")"          # e.g. nebius_..._grouped_shard00.csv
+          ext="${bn##*.}"                    # csv
+          stem="${bn%.*}"                    # ..._shard00
+          base="${stem%_shard*}"             # ... (original wrapper stem)
+          out_csv="${base}.${ext}"           # original filename: ..._grouped.csv
+
+          # write header once, then append bodies of each shard
+          head -n 1 "$first" > "$out_csv"
+          for f in "${CSVs[@]}"; do
+            tail -n +2 "$f" >> "$out_csv"
+          done
+          echo "Merged $((${#CSVs[@]})) shard CSVs into $out_csv"
+          wc -l "$out_csv"; ls -lh "$out_csv"
+
+      - name: Merge error logs into original wrapper filename
+        run: |
+          set -euxo pipefail
+          shopt -s nullglob
+          mapfile -t ERRs < <(find merged_inputs -type f -name '*_errors*_shard*.txt' | sort)
+          if [ "${#ERRs[@]}" -gt 0 ]; then
+            first="${ERRs[0]}"
+            bn="$(basename "$first")"        # e.g. ..._errors_shard00.txt
+            stem="${bn%.*}"                  # ..._errors_shard00
+            base="${stem%_shard*}"           # ..._errors
+            out_err="${base}.txt"            # original filename: ..._errors.txt
+            cat "${ERRs[@]}" > "$out_err"
+            echo "Merged ${#ERRs[@]} error logs into $out_err"
+            ls -lh "$out_err"
+          else
+            echo "No shard error logs found" > no_errors.txt
+          fi
+
+      - name: Upload merged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-results-merged
+          path: |
+            *.csv
+            *_errors.txt
+            no_errors.txt
