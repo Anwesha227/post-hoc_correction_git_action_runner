@@ -47,7 +47,8 @@ jobs:
           python3 -m pip install -r requirements.txt || true
           # Ensure v1 SDK + essentials are present
           python3 -m pip install --upgrade "openai>=1.30.0" python-dotenv httpx pandas numpy pillow tqdm requests gdown
-
+          python3 -m pip install --upgrade "pyarrow>=15.0.0"
+          
       - name: Install unzip
         run: |
           sudo apt-get update
