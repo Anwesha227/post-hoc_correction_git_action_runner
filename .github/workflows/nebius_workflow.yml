@@ -1,4 +1,4 @@
-name: Nebius Qwen Inference (Drive ZIP + existing scripts, 6 shards)
+name: Nebius Qwen Inference (Drive ZIP + scripts, 6 shards)
 
 on:
   workflow_dispatch:
@@ -14,6 +14,10 @@ on:
         description: "Nebius OpenAI-compatible base URL"
         required: false
         default: "https://api.studio.nebius.com/v1/"
+      parallel:
+        description: "How many shards to run in parallel (1–6)"
+        required: false
+        default: "3"
 
 jobs:
   run:
@@ -22,9 +26,9 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: ${{ fromJSON(github.event.inputs.parallel) }}
       matrix:
-        shard: [00,01,02,03,04,05]   # 6 shards
+        shard: [0,1,2,3,4,5]   # 6 shards
         total: [6]
 
     steps:
@@ -38,9 +42,11 @@ jobs:
 
       - name: Install deps
         run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt || true
-          pip install --upgrade "openai>=1.30.0" python-dotenv httpx pandas numpy pillow tqdm requests gdown
+          python3 -m pip install -U pip
+          # Install repo deps but don't fail if someone pinned old openai
+          python3 -m pip install -r requirements.txt || true
+          # Ensure v1 SDK + essentials are present
+          python3 -m pip install --upgrade "openai>=1.30.0" python-dotenv httpx pandas numpy pillow tqdm requests gdown
 
       - name: Install unzip
         run: |
@@ -55,6 +61,15 @@ jobs:
           unzip -q /tmp/dataset/semi-aves.zip -d /tmp/dataset
           echo "After unzip:"
           find /tmp/dataset -maxdepth 2 -type d | sed 's/^/  /' | head -n 50
+
+      - name: Sanity check dataset
+        run: |
+          set -euxo pipefail
+          SEMI_AVES_DIR="$(find /tmp/dataset -maxdepth 2 -type d -name semi-aves | head -n1)"
+          test -d "$SEMI_AVES_DIR/test"
+          COUNT=$(find "$SEMI_AVES_DIR/test" -type f | wc -l)
+          echo "Found $COUNT files under test/"
+          [ "$COUNT" -ge 7000 ]
 
       - name: Expose dataset at ./datasets/semi-aves (as expected by wrapper)
         run: |
@@ -85,21 +100,22 @@ jobs:
           chmod +x mllm-inference/semi-aves/scripts/run_nebius_72b.sh
           chmod +x mllm-inference/semi-aves/scripts/run_qwen.sh
 
-      # ---------- SHARDING ----------
+      # ---------------- SHARDING ----------------
       - name: Split test.txt into shards
         run: |
-          split -n l/${{ matrix.total }} -d \
+          # Create zero-padded parts: test_part00.txt … test_part05.txt
+          split -n l/${{ matrix.total }} -d -a 2 \
             data/semi-aves/test.txt data/semi-aves/test_part --additional-suffix=.txt
           ls -la data/semi-aves/test_part*.txt
-          wc -l data/semi-aves/test*.txt
+          wc -l data/semi-aves/test_part*.txt
 
-      - name: Use this shard as test.txt
+      - name: Use this shard as test.txt (zero-padded index)
         run: |
-          cp "data/semi-aves/test_part${{ matrix.shard }}.txt" data/semi-aves/test.txt
+          SH=$(printf "%02d" ${{ matrix.shard }})
+          cp "data/semi-aves/test_part${SH}.txt" data/semi-aves/test.txt
           echo "Preview of this shard:"
           sed -n '1,5p' data/semi-aves/test.txt
-          echo "Shard line count:"
-          wc -l data/semi-aves/test.txt
+          echo "Shard line count:"; wc -l data/semi-aves/test.txt
 
       - name: Clear proxy env (guard)
         run: |
@@ -118,13 +134,13 @@ jobs:
             base="$(basename "$f")"
             ext="${base##*.}"
             stem="${base%.*}"
-            cp "$f" "outputs/${stem}_shard${{ matrix.shard }}.${ext}"
+            cp "$f" "outputs/${stem}_shard$(printf "%02d" ${{ matrix.shard }}).${ext}"
           done
           find outputs -maxdepth 1 -type f -print || true
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: qwen-results-shard-${{ matrix.shard }}
+          name: qwen-results-shard-$(printf "%02d" ${{ matrix.shard }})
           path: outputs/
           if-no-files-found: warn
