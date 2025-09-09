@@ -84,4 +84,7 @@ jobs:
 
       - name: Upload results
         uses: actions/upload-artifact@v4
-        wi
+        with:
+          name: qwen-results
+          path: outputs/
+          if-no-files-found: warn
