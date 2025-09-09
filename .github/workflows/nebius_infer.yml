@@ -78,18 +78,6 @@ jobs:
           chmod +x mllm-inference/semi-aves/scripts/run_nebius_72b.sh
           chmod +x mllm-inference/semi-aves/scripts/run_qwen.sh
 
-      - name: Limit to first N images (sanity check)
-        env:
-          N: 5
-        run: |
-          set -euxo pipefail
-          # Keep the original around inside this runner
-          cp data/semi-aves/test.txt data/semi-aves/test_full.txt
-          # Use only the first N lines for this run
-          head -n "$N" data/semi-aves/test_full.txt > data/semi-aves/test.txt
-          echo "Using first $N lines:"
-          sed -n '1,10p' data/semi-aves/test.txt
-
       - name: Run your wrapper (which calls run_qwen.sh)
         run: |
           mllm-inference/semi-aves/scripts/run_nebius_72b.sh
