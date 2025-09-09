@@ -1,10 +1,10 @@
-name: Nebius Qwen Inference (Drive ZIP + existing scripts)
+name: Nebius Qwen Inference (Drive + existing scripts)
 
 on:
   workflow_dispatch:
     inputs:
-      drive_zip_file_id:
-        description: "Google Drive FILE ID of semi-aves.zip (e.g., 16a9dvGMQwypqfAQ0vRtfMQzb7Aa7L2el)"
+      drive_folder_id:
+        description: "Google Drive folder ID containing 'semi-aves' dataset"
         required: true
       api_model:
         description: "Nebius model name"
@@ -19,7 +19,6 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 350
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -35,18 +34,11 @@ jobs:
           pip install -r requirements.txt
           pip install gdown
 
-      - name: Install unzip
+      - name: Download dataset from Google Drive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip
-
-      - name: Download dataset ZIP and unzip
-        run: |
-          set -euxo pipefail
           mkdir -p /tmp/dataset
-          gdown "https://drive.google.com/uc?id=${{ github.event.inputs.drive_zip_file_id }}" -O /tmp/dataset/semi-aves.zip
-          unzip -q /tmp/dataset/semi-aves.zip -d /tmp/dataset
-          echo "After unzip:"
+          gdown --fuzzy --folder "https://drive.google.com/drive/folders/${{ github.event.inputs.drive_folder_id }}" -O /tmp/dataset
+          echo "Downloaded folders under /tmp/dataset:"
           find /tmp/dataset -maxdepth 2 -type d | sed 's/^/  /' | head -n 50
 
       - name: Expose dataset at ./datasets/semi-aves (as expected by wrapper)
@@ -88,6 +80,7 @@ jobs:
           find . -type f \( -name "*.csv" -o -name "*.log" -o -name "*.txt" \) | sed 's/^/  /'
           cp -r mllm-inference/semi-aves/mllm_output/*.csv outputs/ 2>/dev/null || true
           cp -r mllm-inference/semi-aves/mllm_output/*.txt outputs/ 2>/dev/null || true
+        shell: bash
 
       - name: Upload results
         uses: actions/upload-artifact@v4
