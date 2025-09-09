@@ -236,3 +236,4 @@ mllm-inference/sem-aves/error_logs
 mllm-inference/sem-aves/mllm_output
 
 /datasets/semi-aves/test
+/datasets/semi-aves/trainval_images
