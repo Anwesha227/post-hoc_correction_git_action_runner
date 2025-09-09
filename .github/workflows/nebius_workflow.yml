@@ -165,7 +165,7 @@ jobs:
           if-no-files-found: warn
 
   merge:
-    name: Merge shard outputs
+    name: Merge shard outputs (preserve wrapper filenames)
     needs: run
     runs-on: ubuntu-latest
     steps:
@@ -175,41 +175,51 @@ jobs:
           pattern: qwen-results-shard-*
           merge-multiple: true
           path: merged_inputs
-
-      - name: Merge CSVs (single header)
+  
+      - name: Merge CSVs to wrapper's filename
         run: |
           set -euxo pipefail
           shopt -s nullglob
-          mapfile -t FILES < <(find merged_inputs -maxdepth 2 -type f -name '*.csv' | sort)
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "No CSVs found to merge" >&2
-            exit 1
+          mapfile -t CSVs < <(find merged_inputs -type f -name '*.csv' | sort)
+          if [ "${#CSVs[@]}" -eq 0 ]; then
+            echo "No CSVs found to merge" >&2; exit 1
           fi
-          # write header from first file
-          head -n 1 "${FILES[0]}" > merged.csv
-          # append all bodies (skip headers)
-          for f in "${FILES[@]}"; do
-            tail -n +2 "$f" >> merged.csv || true
+          first="${CSVs[0]}"
+          bn="$(basename "$first")"         # e.g., nebius_..._qwen_top5_grouped_shard00.csv
+          ext="${bn##*.}"                   # csv
+          stem="${bn%.*}"                   # nebius_..._qwen_top5_grouped_shard00
+          base="${stem%_shard*}"            # nebius_..._qwen_top5_grouped
+          out_csv="${base}.${ext}"          # nebius_..._qwen_top5_grouped.csv
+  
+          # write header once, then append bodies
+          head -n 1 "$first" > "$out_csv"
+          for f in "${CSVs[@]}"; do
+            tail -n +2 "$f" >> "$out_csv"
           done
-          wc -l merged.csv
-          ls -lh merged.csv
-
-      - name: Merge error logs (optional)
+          wc -l "$out_csv"; ls -lh "$out_csv"
+  
+      - name: Merge error logs to wrapper's filename
         run: |
           set -euxo pipefail
           shopt -s nullglob
-          ERRFILES=( $(find merged_inputs -type f -name '*errors*.txt' | sort) )
-          if [ "${#ERRFILES[@]}" -gt 0 ]; then
-            cat "${ERRFILES[@]}" > merged_errors.txt
-            ls -lh merged_errors.txt
+          mapfile -t ERRs < <(find merged_inputs -type f -name '*errors*.txt' | sort)
+          if [ "${#ERRs[@]}" -gt 0 ]; then
+            first="${ERRs[0]}"              # e.g., ..._errors_shard00.txt
+            bn="$(basename "$first")"
+            stem="${bn%.*}"                 # ..._errors_shard00
+            base="${stem%_shard*}"          # ..._errors
+            out_err="${base}.txt"           # ..._errors.txt
+            cat "${ERRs[@]}" > "$out_err"
+            ls -lh "$out_err"
           else
-            echo "No error logs to merge" > merged_errors.txt
+            echo "No shard error logs found" > no_errors.txt
           fi
-
-      - name: Upload merged artifacts
+  
+      - name: Upload merged artifacts (original names)
         uses: actions/upload-artifact@v4
         with:
           name: qwen-results-merged
           path: |
-            merged.csv
-            merged_errors.txt
+            *.csv
+            *_errors.txt
+            no_errors.txt
