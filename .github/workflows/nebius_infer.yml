@@ -28,6 +28,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Show which requirements.txt we’re using
+        run: |
+          set -euxo pipefail
+          echo "PWD: $(pwd)"
+          echo "Repo root (GITHUB_WORKSPACE): $GITHUB_WORKSPACE"
+          echo "Find all requirements files:"
+          find "$GITHUB_WORKSPACE" -maxdepth 4 -iname "requirements*.txt" -printf "%p\n"
+          echo "---- requirements.txt (repo root) ----"
+          sed -n '1,40p' "$GITHUB_WORKSPACE/requirements.txt" || true
+
       - name: Install deps
         run: |
           python -m pip install -U pip
