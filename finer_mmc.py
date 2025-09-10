@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import json
 import argparse
@@ -42,17 +39,20 @@ def random_augmentation(n_px: int):
     ])
 
 # Compact CLIP template set
-CLIP_TEMPLATES = [
-    "a photo of a {}.",
-    "a close-up photo of a {}.",
-    "a cropped photo of a {}.",
-    "a photo of the {}.",
-    "a good photo of a {}.",
-    "a wildlife photo of a {}.",
-    "a photo of a {} bird.",
-    "a photo of one {}.",
-    "a bright photo of a {}.",
-    "a photo of a small {}.",
+# CLIP_TEMPLATES = [
+#     "a photo of a {}.",
+#     "a close-up photo of a {}.",
+#     "a cropped photo of a {}.",
+#     "a photo of the {}.",
+#     "a good photo of a {}.",
+#     "a wildlife photo of a {}.",
+#     "a photo of a {} bird.",
+#     "a photo of one {}.",
+#     "a bright photo of a {}.",
+#     "a photo of a small {}.",
+# ]
+CLIP_TEMPLATES =[
+    'a photo of a {}, a type of bird.',
 ]
 
 def read_listfile(list_path: Path) -> List[Tuple[str, int]]:
