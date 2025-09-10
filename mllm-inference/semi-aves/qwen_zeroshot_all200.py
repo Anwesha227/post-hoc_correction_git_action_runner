@@ -143,8 +143,7 @@ def build_zero_shot_prompt() -> str:
         "from the following list of 200 candidates:\n\n"
         f"{species_block}\n\n"
         "Respond in the following format:\n\n"
-        "Most Likely: [class ID from 0 to 199]\n\n"
-        "Explanation: "
+        "Most Likely: [class ID from 0 to 199]"
     )
 
 # === Helpers ===

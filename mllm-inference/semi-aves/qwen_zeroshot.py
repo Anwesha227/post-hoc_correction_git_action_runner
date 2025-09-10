@@ -138,13 +138,12 @@ def build_zero_shot_prompt() -> str:
     half = len(species_items) // 2
     species_block = ", ".join(species_items[:half]) + "\n" + ", ".join(species_items[half:])
     return (
-        "You are a helpful assistant that identifies bird species from images.\n\n"
-        "Below is an image of a bird. Your task is to examine the image and choose the most likely species "
-        "from the following list of 200 candidates:\n\n"
-        f"{species_block}\n\n"
-        "Respond in the following format:\n\n"
-        "Most Likely: [class ID from 0 to 199]\n\n"
-        "Explanation: "
+        "You are a helpful assistant that identifies bird species from images.\n"
+        "What is the common name and scientific name of the bird in this image?\n"
+        "Always give the most specific common name and the exact scientific name (genus + species), not a family or a generic name.\n"
+        "Respond only in the following format and do not include anything else:\n"
+        "Common Name: <your answer here>\n"
+        "Scientific Name: <your answer here>"
     )
 
 # === Helpers ===
