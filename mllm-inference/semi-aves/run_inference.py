@@ -200,8 +200,9 @@ def build_prompt_top5(row: pd.Series, tax_maps: Dict, templates: Dict[str, str],
     species_list_content = "\n".join(entry_lines)
     confidence_note_content = ""
     if use_confidence:
-        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. "
-                                   "Use p1 only as a signal... consider other candidates.\n\n")
+        confidence_note_content = ("Note on confidence: The confidence shown for the highest-ranked candidate (p1) reflects how certain the underlying model was. "
+                                   "Use it only as a signal of certainty. If p1 appears strong and aligns with visible evidence, you may lean toward that candidate. "
+                                   "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     return base_template.format(species_list=species_list_content, confidence_note=confidence_note_content)
 
 def build_prompt_zeroshot(tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, **kwargs) -> str:
@@ -227,7 +228,9 @@ def build_prompt_multimodal_16shot(row: pd.Series, tax_maps: Dict, templates: Di
     query_img_b64 = encode_image_b64(query_image_path)
     confidence_note_content = ""
     if use_confidence:
-        confidence_note_content = ("Note on confidence: ... give more weight to the visual evidence...\n\n")
+        confidence_note_content = ("Note on confidence: The confidence shown for the highest-ranked candidate (p1) reflects how certain the underlying model was. "
+                                   "Use it only as a signal of certainty. If p1 appears strong and aligns with visible evidence, you may lean toward that candidate. "
+                                   "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     final_template_text = base_template.format(confidence_note=confidence_note_content)
     messages = [{"type": "text", "text": final_template_text}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{query_img_b64}"}}]
     name_to_classid = tax_maps['name_to_classid']
