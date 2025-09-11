@@ -69,27 +69,36 @@ jobs:
       - name: Sanity check dataset
         run: |
           set -euxo pipefail
-          SEMI_AVES_DIR="$(find /tmp/dataset -maxdepth 2 -type d -name semi-aves | head -n1)"
-          test -d "$SEMI_AVES_DIR/test"
-          COUNT=$(find "$SEMI_AVES_DIR/test" -type f | wc -l)
-          echo "Found $COUNT files under test/"
-          [ "$COUNT" -ge 7000 ]
+      
+          if [ ! -d "/tmp/dataset/test" ]; then
+            echo "ERROR: Could not find the /tmp/dataset/test directory after unzipping."
+            echo "Contents of /tmp/dataset:"
+            ls -la /tmp/dataset
+            exit 1
+          fi
+          
+          if [ ! -d "/tmp/dataset/pregenerated_references_16shot" ]; then
+            echo "WARNING: Could not find /tmp/dataset/pregenerated_references_16shot. This will fail for multimodal prompts."
+            echo "Contents of /tmp/dataset:"
+            ls -la /tmp/dataset
+            exit 1
+          fi
+          
+          COUNT=$(find "/tmp/dataset/test" -type f | wc -l)
+          echo "Found $COUNT files under /tmp/dataset/test/"
+          [ "$COUNT" -ge 7000 ] # Fails if the test set seems incomplete
 
       - name: Expose dataset at ./datasets/semi-aves (as expected by wrapper)
         run: |
+          set -euxo pipefail
           mkdir -p datasets
-          if [ -d /tmp/dataset/semi-aves ]; then
-            ln -s /tmp/dataset/semi-aves datasets/semi-aves
-          else
-            CAND="$(find /tmp/dataset -maxdepth 2 -type d -name semi-aves | head -n1)"
-            if [ -n "$CAND" ]; then
-              ln -s "$CAND" datasets/semi-aves
-            else
-              echo "ERROR: Could not find 'semi-aves' folder in /tmp/dataset" >&2
-              exit 1
-            fi
-          fi
-          ls -la datasets
+          ln -s /tmp/dataset datasets/semi-aves
+          
+          echo "Created symlink: ./datasets/semi-aves -> /tmp/dataset"
+          echo "Verifying contents of the symlink:"
+          ls -la datasets/semi-aves
+
+     
 
       - name: Provide .env for run_qwen.sh (NEBIUS_API_KEY)
         env:
