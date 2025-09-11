@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 1. Choose the prompt template you want to run.
 #    e.g., top5-sci-with-confidence, zeroshot-explanation, top5-simple-with-confidence, top5-flat-with-confidence, zeroshot-all200-explanation.
 #    e.g., top5-sci, zeroshot, top5-simple, top5-flat, zeroshot-all200.
-PROMPT_TEMPLATE="top5-multimodal-16shot"
+PROMPT_TEMPLATE="top5-multimodal-16shot-with-confidence"
 
 # 2. The base model name affects the TOPK_JSON path and output filenames.
 #    Choose from vitb32_openclip_laion400m, resnet50_imagenet_pretrained, resnet50_inat_pretrained, dinov2_vitb14_reg, dinov3_vitb16
