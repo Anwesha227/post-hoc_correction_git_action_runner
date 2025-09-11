@@ -1,29 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# A generic launcher script for run_inference.py.
+# Its job is to parse arguments, validate them, and construct the correct
+# command to execute the Python script for different backends.
+
 usage() {
   cat <<'EOF'
 Usage:
   run_qwen.sh \
-    --backend nebius|ollama \
+    --backend nebius|hyperbolic|ollama \
     --python PATH_TO_PY \
+    --prompt-template TEMPLATE_NAME \
+    --prompt-dir DIR \
     --image-dir DIR \
-    --image-paths LIST_TXT \
-    --topk-json TOPK_JSON \
     --taxonomy-json TAXONOMY_JSON \
+    [--image-paths LIST_TXT] \
+    [--topk-json TOPK_JSON] \
+    [--ref-image-dir REF_IMAGE_DIR_PATH] \
     [--api-model NAME] [--api-base URL] [--env-file .env] \
     [--output-csv FILE] [--error-file FILE] \
     [--ollama-host URL --ollama-model NAME] \
-    [--prompt-file FILE]
+    [--dry-run]
 EOF
 }
 
+# --- Initialize variables ---
 BACKEND=""
 PY_ENTRY=""
+PROMPT_TEMPLATE=""
+PROMPT_DIR=""
 IMAGE_DIR=""
 IMAGE_PATHS=""
 TOPK_JSON=""
 TAXONOMY_JSON=""
+REF_IMAGE_DIR=""
 API_MODEL=""
 API_BASE=""
 ENV_FILE=""
@@ -31,16 +42,20 @@ OUTPUT_CSV=""
 ERROR_FILE=""
 OLLAMA_HOST=""
 OLLAMA_MODEL=""
-PROMPT_FILE=""
+EXTRA_FLAGS=""
 
+# --- Parse command-line arguments ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --backend) BACKEND="$2"; shift 2;;
     --python) PY_ENTRY="$2"; shift 2;;
+    --prompt-template) PROMPT_TEMPLATE="$2"; shift 2;;
+    --prompt-dir) PROMPT_DIR="$2"; shift 2;;
     --image-dir) IMAGE_DIR="$2"; shift 2;;
     --image-paths) IMAGE_PATHS="$2"; shift 2;;
     --topk-json) TOPK_JSON="$2"; shift 2;;
     --taxonomy-json) TAXONOMY_JSON="$2"; shift 2;;
+    --ref-image-dir) REF_IMAGE_DIR="$2"; shift 2;;
     --api-model) API_MODEL="$2"; shift 2;;
     --api-base) API_BASE="$2"; shift 2;;
     --env-file) ENV_FILE="$2"; shift 2;;
@@ -48,71 +63,78 @@ while [[ $# -gt 0 ]]; do
     --error-file) ERROR_FILE="$2"; shift 2;;
     --ollama-host) OLLAMA_HOST="$2"; shift 2;;
     --ollama-model) OLLAMA_MODEL="$2"; shift 2;;
-    --prompt-file) PROMPT_FILE="$2"; shift 2;;
+    --dry-run) EXTRA_FLAGS+=" --dry-run"; shift 1;;
     *) echo "Unknown option: $1"; usage; exit 2;;
   esac
 done
 
-[[ -n "$BACKEND" && -n "$PY_ENTRY" && -n "$IMAGE_DIR" && -n "$IMAGE_PATHS" && -n "$TOPK_JSON" && -n "$TAXONOMY_JSON" ]] || {
+# --- Validate required arguments ---
+[[ -n "$BACKEND" && -n "$PY_ENTRY" && -n "$PROMPT_TEMPLATE" && -n "$PROMPT_DIR" && -n "$IMAGE_DIR" && -n "$TAXONOMY_JSON" ]] || {
   echo "ERROR: missing required args"; usage; exit 1; }
 [[ -f "$PY_ENTRY" ]] || { echo "ERROR: Python script not found: $PY_ENTRY" >&2; exit 1; }
 
-# Load .env for non-key vars (wrappers already export OPENAI_API_KEY)
+# --- Load .env file if provided ---
 if [[ -n "${ENV_FILE:-}" ]]; then
-  [[ -f "$ENV_FILE" ]] || { echo "ERROR: --env-file not found: $ENV_FILE" >&2; exit 1; }
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  echo ">> Loaded env from: $ENV_FILE"
+  if [[ -f "$ENV_FILE" ]]; then
+    source "$ENV_FILE"
+    echo ">> Loaded env from: $ENV_FILE"
+  else
+    echo "ERROR: --env-file not found: $ENV_FILE" >&2; exit 1;
+  fi
 fi
 
+# --- Construct base command for Python script ---
+CMD=(
+  python "$PY_ENTRY"
+  "--prompt-template" "$PROMPT_TEMPLATE"
+  "--prompt-dir" "$PROMPT_DIR"
+  "--image-dir" "$IMAGE_DIR"
+  "--taxonomy-json" "$TAXONOMY_JSON"
+)
+
+# --- Conditionally add optional arguments ---
+if [[ -n "$IMAGE_PATHS" ]]; then CMD+=("--image-paths" "$IMAGE_PATHS"); fi
+if [[ -n "$TOPK_JSON" ]]; then CMD+=("--topk-json" "$TOPK_JSON"); fi
+if [[ -n "$REF_IMAGE_DIR" ]]; then CMD+=("--ref-image-dir" "$REF_IMAGE_DIR"); fi
+
+# --- Backend-specific logic ---
 case "$BACKEND" in
-  nebius)
-    [[ -n "${OPENAI_API_KEY:-}" ]] || { echo "ERROR: OPENAI_API_KEY not set (wrapper should export it)"; exit 1; }
-    [[ -n "${API_BASE:-}"  ]] || { [[ -n "$API_BASE"  ]] || { echo "ERROR: --api-base required"; exit 1; }; }
-    [[ -n "${API_MODEL:-}" ]] || { [[ -n "$API_MODEL" ]] || { echo "ERROR: --api-model required"; exit 1; }; }
+  nebius | hyperbolic)
+    BACKEND_NAME_FIRST_LETTER=$(echo "${BACKEND:0:1}" | tr 'a-z' 'A-Z')
+    BACKEND_NAME_REST="${BACKEND:1}"
+    BACKEND_NAME="${BACKEND_NAME_FIRST_LETTER}${BACKEND_NAME_REST}"
+    
+    [[ -n "${OPENAI_API_KEY:-}" ]] || { echo "ERROR: OPENAI_API_KEY not set for backend '$BACKEND'"; exit 1; }
+    [[ -n "${API_BASE:-$API_BASE}" ]] || { echo "ERROR: --api-base required for backend '$BACKEND'"; exit 1; }
+    [[ -n "${API_MODEL:-$API_MODEL}" ]] || { echo "ERROR: --api-model required for backend '$BACKEND'"; exit 1; }
 
-    export OPENAI_API_KEY
-    export API_BASE
-    export API_MODEL
+    echo ">> Backend         : $BACKEND_NAME (OpenAI-compatible)"
+    echo ">> Python entry    : $PY_ENTRY"
+    echo ">> Prompt Template : $PROMPT_TEMPLATE"
 
-    echo ">> Backend       : OpenAI-compatible (nebius branch)"
-    echo ">> API base      : $API_BASE"
-    echo ">> API model     : $API_MODEL"
-    echo ">> Python entry  : $PY_ENTRY"
-
-    # *********** FIXED: pass hyphenated flags to Python ***********
-    python "$PY_ENTRY" \
-      --backend nebius \
-      --api-base "$API_BASE" \
-      --api-model "$API_MODEL" \
-      --image-dir "$IMAGE_DIR" \
-      --image-paths "$IMAGE_PATHS" \
-      --topk-json "$TOPK_JSON" \
-      --taxonomy-json "$TAXONOMY_JSON" \
-      --output-csv "${OUTPUT_CSV:-outputs/qwen/results.csv}" \
-      --error-file "${ERROR_FILE:-outputs/qwen/errors.txt}" \
-      ${PROMPT_FILE:+--prompt-file "$PROMPT_FILE"}
+    "${CMD[@]}" \
+      --backend "$BACKEND" \
+      --api-base "${API_BASE:-$API_BASE}" \
+      --api-model "${API_MODEL:-$API_MODEL}" \
+      --output-csv "${OUTPUT_CSV:-outputs/${BACKEND}/results.csv}" \
+      --error-file "${ERROR_FILE:-outputs/${BACKEND}/errors.txt}" \
+      $EXTRA_FLAGS
     ;;
 
   ollama)
     [[ -n "$OLLAMA_HOST" && -n "$OLLAMA_MODEL" ]] || { echo "ERROR: --ollama-host and --ollama-model required"; exit 1; }
-    echo ">> Backend       : Ollama"
-    echo ">> Host          : $OLLAMA_HOST"
-    echo ">> Model         : $OLLAMA_MODEL"
-    echo ">> Python entry  : $PY_ENTRY"
 
-    # *********** FIXED: pass hyphenated flags to Python ***********
-    python "$PY_ENTRY" \
+    echo ">> Backend         : Ollama"
+    echo ">> Python entry    : $PY_ENTRY"
+    echo ">> Prompt Template : $PROMPT_TEMPLATE"
+
+    "${CMD[@]}" \
       --backend ollama \
       --ollama-host "$OLLAMA_HOST" \
       --ollama-model "$OLLAMA_MODEL" \
-      --image-dir "$IMAGE_DIR" \
-      --image-paths "$IMAGE_PATHS" \
-      --topk-json "$TOPK_JSON" \
-      --taxonomy-json "$TAXONOMY_JSON" \
       --output-csv "${OUTPUT_CSV:-outputs/ollama/results.csv}" \
       --error-file "${ERROR_FILE:-outputs/ollama/errors.txt}" \
-      ${PROMPT_FILE:+--prompt-file "$PROMPT_FILE"}
+      $EXTRA_FLAGS
     ;;
 
   *)

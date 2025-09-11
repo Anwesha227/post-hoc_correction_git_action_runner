@@ -1,0 +1,7 @@
+You are a helpful assistant that identifies bird species from images.
+
+What is the common name and scientific name of the bird in this image?
+Always give the most specific common name and the exact scientific name (genus + species).
+
+Respond only in the following format:
+{response_format}
