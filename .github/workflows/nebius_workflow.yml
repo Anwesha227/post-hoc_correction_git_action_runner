@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       drive_zip_file_id:
-        description: "Google Drive FILE ID of semi-aves.zip (e.g., 16a9dvGMQwypqfAQ0vRtfMQzb7Aa7L2el)"
+        description: "Google Drive FILE ID of semi-aves.zip (e.g., 10PerH1zZ4UTaDFLr6Oa4NR_OtfTkl-FI)"
         required: true
       api_model:
         description: "Nebius model name"
