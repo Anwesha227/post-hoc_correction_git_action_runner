@@ -93,18 +93,19 @@ jobs:
           # Create the target directory structure.
           mkdir -p "$EXPECTED_DATA_LOCATION"
           
-          # Instead of a symlink, MOVE the contents from the temporary download
-          # location to the final location the script expects.
-          # The `*` ensures we move the contents (like the 'test' folder)
-          # and not the '/tmp/dataset' folder itself.
-          mv /tmp/dataset/* "$EXPECTED_DATA_LOCATION/"
+          # Use 'cp' (copy) instead of 'mv' (move) for robustness.
+          # The -r flag means 'recursive' (copy directories).
+          # The -n flag means 'no-clobber' (do not overwrite an existing file).
+          # This command copies the two data directories we need into the expected location.
+          cp -r -n /tmp/dataset/test "$EXPECTED_DATA_LOCATION/"
+          cp -r -n /tmp/dataset/pregenerated_references_16shot "$EXPECTED_DATA_LOCATION/"
           
-          echo "Moved unzipped contents to ${EXPECTED_DATA_LOCATION}"
+          echo "Copied data directories to ${EXPECTED_DATA_LOCATION}"
           
           # Verify the final structure. This command will now succeed.
           echo "Verifying final path the script will use:"
           ls -la "${EXPECTED_DATA_LOCATION}/test"
-          
+
       - name: Restore cached results
         id: cache-results-restore
         uses: actions/cache/restore@v4
