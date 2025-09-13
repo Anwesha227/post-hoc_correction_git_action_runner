@@ -1,0 +1,48 @@
+# Final, curated schema for visual bird attributes. Optimized for extraction from encyclopedic text.
+
+# Attributes common to the entire species, focusing on shape and context.
+common:
+  - size_category      # E.g., Sparrow-sized, Robin-sized, Crow-sized, Goose-sized
+  - primary_shape      # E.g., Passerine, Raptor, Waterfowl, Shorebird, Plump, Slender
+  - bill_shape         # E.g., Conical, Hooked, Dagger-like, Spatulate
+  - wing_shape         # E.g., Broad and rounded, Long and pointed
+  - tail_shape         # E.g., Forked, Notched, Rounded, Square
+  - leg_color
+  - eye_color
+  - habitat            # E.g., Forest, Wetland, Grassland, Urban
+
+# Visually distinct attributes for an adult male.
+adult_male:
+  - head_pattern       # E.g., Plain, Capped, Striped, Masked
+  - crown_color
+  - throat_color
+  - bill_color
+  - back_and_upperparts_color
+  - back_pattern       # E.g., Plain, Streaked, Spotted, Barred
+  - breast_color
+  - breast_pattern     # E.g., Plain, Streaked, Spotted
+  - underparts_color
+  - wing_color
+  - wing_pattern       # E.g., Plain, Barred, Spotted, Panel
+  - tail_color
+  - tail_pattern       # E.g., Plain, Banded, Tipped
+
+# Visually distinct attributes for an adult female.
+adult_female:
+  - head_pattern
+  - crown_color
+  - throat_color
+  - bill_color
+  - back_and_upperparts_color
+  - back_pattern
+  - breast_color
+  - breast_pattern
+  - underparts_color
+  - wing_color
+  - wing_pattern
+  - tail_color
+  - tail_pattern
+
+# Visually distinct attributes for a juvenile.
+juvenile:
+  - overall_description # A single field is more practical for juveniles, as text often summarizes their appearance.

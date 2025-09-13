@@ -172,7 +172,8 @@ def _format_species_flat(meta: Dict[str, Any]) -> str:
     return ", ".join(parts)
 
 def _format_species_sci(meta: Dict[str, Any]) -> str:
-    common, sci = meta.get("common"), meta.get("sci")
+    common = meta.get("common", "")
+    sci = meta.get("sci", "")
     if not common: return sci or "Unknown"
     if not sci or common == sci: return common
     return f"{common} ({sci})"
@@ -181,6 +182,24 @@ def _conf_str(p: Optional[float]) -> str:
     if p is None: return ""
     try: return f" [p={max(0.0, min(1.0, float(p))):.2f}]"
     except (ValueError, TypeError): return ""
+
+def format_description_for_prompt(desc_json: Dict) -> str:
+    lines = []
+    for category, attributes in desc_json.items():
+        category_title = category.replace('_', ' ').title()
+        lines.append(f"  {category_title}:")
+        if isinstance(attributes, list):
+             for item in attributes:
+                 lines.append(f"    - {item.replace('_', ' ').capitalize()}")
+        elif isinstance(attributes, dict):
+            for key, value in attributes.items():
+                if isinstance(value, str) and value.strip():
+                    lines.append(f"    - {key.replace('_', ' ').capitalize()}: {value}")
+                elif isinstance(value, list) and value:
+                    list_items = ", ".join(filter(None, value))
+                    if list_items:
+                        lines.append(f"    - {key.replace('_', ' ').capitalize()}: {list_items}")
+    return "\n".join(lines)
 
 def build_prompt_top5(row: pd.Series, tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace) -> str:
     base_template = templates.get("top5_base")
@@ -200,8 +219,8 @@ def build_prompt_top5(row: pd.Series, tax_maps: Dict, templates: Dict[str, str],
     species_list_content = "\n".join(entry_lines)
     confidence_note_content = ""
     if use_confidence:
-        confidence_note_content = ("Note on confidence: The confidence shown for the highest-ranked candidate (p1) reflects how certain the underlying model was. "
-                                   "Use it only as a signal of certainty. If p1 appears strong and aligns with visible evidence, you may lean toward that candidate. "
+        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. " 
+                                   "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
                                    "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     return base_template.format(species_list=species_list_content, confidence_note=confidence_note_content)
 
@@ -228,54 +247,85 @@ def build_prompt_multimodal_16shot(row: pd.Series, tax_maps: Dict, templates: Di
     query_img_b64 = encode_image_b64(query_image_path)
     confidence_note_content = ""
     if use_confidence:
-        confidence_note_content = ("Note on confidence: The confidence shown for the highest-ranked candidate (p1) reflects how certain the underlying model was. "
-                                   "Use it only as a signal of certainty. If p1 appears strong and aligns with visible evidence, you may lean toward that candidate. "
+        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. " 
+                                   "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
                                    "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     final_template_text = base_template.format(confidence_note=confidence_note_content)
     messages = [{"type": "text", "text": final_template_text}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{query_img_b64}"}}]
-    name_to_classid = tax_maps['name_to_classid']
     for i in range(1, 6):
-        sci_name_key = f"pred{i}_sci"
-        if sci_name_key not in row or pd.isna(row[sci_name_key]): raise KeyError(f"Input data missing: {sci_name_key}")
+        class_id = row.get(f"pred{i}")
+        if pd.isna(class_id): continue
+        
+        # --- MODIFIED BLOCK ---
+        meta = tax_maps['id2meta'].get(int(class_id), {})
+        formatted_name = _format_species_sci(meta) # Use the rich name format
+        # --- END MODIFICATION ---
+        
         conf_str_val = _conf_str(row.get(f"conf{i}")) if use_confidence else ""
-        candidate_text = f"Candidate {i}: {row[sci_name_key]}{conf_str_val}"
-        name = str(row[sci_name_key]).lower().strip()
-        class_id = name_to_classid.get(name)
-        if class_id is None: raise KeyError(f"Species name '{name}' not in taxonomy map.")
-        ref_image_path = Path(args.ref_image_dir) / f"{class_id}.jpg"
+        candidate_text = f"Candidate {i}: {formatted_name}{conf_str_val}"
+        
+        ref_image_path = Path(args.ref_image_dir) / f"{int(class_id)}.jpg"
         if not ref_image_path.exists(): raise FileNotFoundError(f"Reference image not found: {ref_image_path}")
         ref_img_b64 = encode_image_b64(ref_image_path)
+        
         messages.append({"type": "text", "text": candidate_text})
         messages.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{ref_img_b64}"}})
+        
     return messages
 
-# --- This map is the "switch-case" for all prompt templates ---
+def build_prompt_top5_with_descriptions(row: pd.Series, tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, descriptions: Dict) -> str:
+    base_template = templates.get("top5_with_descriptions")
+    if not base_template: raise KeyError("Could not find 'top5_with_descriptions.txt'.")
+    use_confidence = "with-confidence" in args.prompt_template
+    
+    entry_lines = []
+    for i in range(1, 6):
+        class_id = row.get(f"pred{i}")
+        if pd.isna(class_id): continue
+        class_id_str = str(int(class_id))
+        
+        # --- MODIFIED BLOCK ---
+        meta = tax_maps['id2meta'].get(int(class_id), {})
+        formatted_name = _format_species_sci(meta) # Use the rich name format
+        # --- END MODIFICATION ---
+        
+        conf_str_val = _conf_str(row.get(f"conf{i}")) if use_confidence else ""
+        
+        description_json = descriptions.get(class_id_str)
+        if not description_json: raise ValueError(f"Description for class ID {class_id_str} not found.")
+        description_text = format_description_for_prompt(description_json)
+        
+        entry_lines.append(f"Candidate {i}: {formatted_name}{conf_str_val}\n{description_text}\n")
+
+    species_list_content = "\n".join(entry_lines)
+    confidence_note_content = ""
+    if use_confidence:
+        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. " 
+                                   "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
+                                   "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
+    return base_template.format(species_list_with_descriptions=species_list_content, confidence_note=confidence_note_content)
+
 PROMPT_BUILDER_MAP = {
-    'top5-simple': build_prompt_top5,
-    'top5-simple-with-confidence': build_prompt_top5,
-    'top5-sci': build_prompt_top5,
-    'top5-sci-with-confidence': build_prompt_top5,
-    'top5-flat': build_prompt_top5,
-    'top5-flat-with-confidence': build_prompt_top5,
-    'zeroshot': build_prompt_zeroshot,
-    'zeroshot-explanation': build_prompt_zeroshot,
-    'zeroshot-all200': build_prompt_zeroshot,
-    'zeroshot-all200-explanation': build_prompt_zeroshot,
-    'top5-multimodal-16shot': build_prompt_multimodal_16shot,
-    'top5-multimodal-16shot-with-confidence': build_prompt_multimodal_16shot,
+    'top5-simple': build_prompt_top5, 'top5-simple-with-confidence': build_prompt_top5,
+    'top5-sci': build_prompt_top5, 'top5-sci-with-confidence': build_prompt_top5,
+    'top5-flat': build_prompt_top5, 'top5-flat-with-confidence': build_prompt_top5,
+    'zeroshot': build_prompt_zeroshot, 'zeroshot-explanation': build_prompt_zeroshot,
+    'zeroshot-all200': build_prompt_zeroshot, 'zeroshot-all200-explanation': build_prompt_zeroshot,
+    'top5-multimodal-16shot': build_prompt_multimodal_16shot, 'top5-multimodal-16shot-with-confidence': build_prompt_multimodal_16shot,
+    'top5_with_descriptions': build_prompt_top5_with_descriptions,
+    'top5_with_descriptions-with-confidence': build_prompt_top5_with_descriptions,
 }
 
-def build_prompt(args: argparse.Namespace, tax_maps: Dict, templates: Dict[str, str], row: Optional[pd.Series] = None) -> Union[str, list]:
-    """Looks up the correct builder function from the map and calls it."""
+def build_prompt(args: argparse.Namespace, tax_maps: Dict, templates: Dict[str, str], row: pd.Series, descriptions: Optional[Dict] = None) -> Union[str, list]:
     builder_func = PROMPT_BUILDER_MAP.get(args.prompt_template)
     if not builder_func:
         raise ValueError(f"Unknown prompt template name: '{args.prompt_template}'")
     
-    # All builders need tax_maps, templates, and args
-    # Only some need the row
-    if builder_func in [build_prompt_top5, build_prompt_multimodal_16shot]:
-        if row is None:
-            raise ValueError(f"A data row is required for the '{args.prompt_template}' template.")
+    if 'with_descriptions' in args.prompt_template:
+        if not descriptions:
+            raise ValueError(f"A descriptions JSON file is required for the '{args.prompt_template}' template.")
+        return builder_func(row, tax_maps, templates, args, descriptions)
+    elif builder_func in [build_prompt_top5, build_prompt_multimodal_16shot]:
         return builder_func(row, tax_maps, templates, args)
     else: # zeroshot builders
         return builder_func(tax_maps, templates, args)
@@ -346,14 +396,18 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--print-first-prompt", action="store_true")
     ap.add_argument("--throttle-sec", type=float, default=0.5)
+    ap.add_argument("--descriptions-json", help="Path to the JSON file with generated species descriptions.")
     args = ap.parse_args()
 
     # --- Validate arguments ---
     is_top5 = args.prompt_template.startswith("top5")
     is_multimodal = 'multimodal' in args.prompt_template
-    if not args.image_paths: sys.exit("ERROR: --image-paths is required to specify which images to process.")
-    if is_top5 and not args.topk_json: sys.exit(f"ERROR: --topk-json is required for the '{args.prompt_template}' template.")
-    if is_multimodal and not args.ref_image_dir: sys.exit(f"ERROR: --ref-image-dir is required for the '{args.prompt_template}' template.")
+    uses_descriptions = 'with_descriptions' in args.prompt_template
+
+    if not args.image_paths: sys.exit("ERROR: --image-paths is required.")
+    if is_top5 and not args.topk_json: sys.exit(f"ERROR: --topk-json is required for '{args.prompt_template}'.")
+    if is_multimodal and not args.ref_image_dir: sys.exit(f"ERROR: --ref-image-dir is required for '{args.prompt_template}'.")
+    if uses_descriptions and not args.descriptions_json: sys.exit(f"ERROR: --descriptions-json is required for '{args.prompt_template}'.")
 
     # --- Setup paths and backend ---
     image_dir = Path(args.image_dir); out_csv = Path(args.output_csv); err_file = Path(args.error_file)
@@ -370,6 +424,13 @@ def main():
     # --- Unified Data Loading Pipeline ---
     templates = load_prompt_templates(Path(args.prompt_dir))
     tax_maps = build_taxonomy_maps(Path(args.taxonomy_json))
+
+    descriptions = None
+    if args.descriptions_json:
+        print(f">> Loading species descriptions from {args.descriptions_json}")
+        with Path(args.descriptions_json).open('r', encoding='utf-8') as f:
+            descriptions = json.load(f)
+
     print(f">> Loading image list from {args.image_paths}")
     test_paths = read_test_list(Path(args.image_paths))
     df = pd.DataFrame({"image_path": test_paths})
@@ -400,7 +461,7 @@ def main():
     if not df.empty:
         first_row = df.iloc[0]
         # Pass the whole args object to the builder
-        first_prompt = build_prompt(args, tax_maps, templates, first_row)
+        first_prompt = build_prompt(args, tax_maps, templates, first_row, descriptions)
         print("=== First Sample Prompt ===")
         if isinstance(first_prompt, list):
             print(format_multimodal_prompt_for_display(first_prompt))
@@ -425,7 +486,7 @@ def main():
         rel_path = str(row["image_path"])
         if rel_path in done_paths: continue
         try:
-            prompt_content = build_prompt(args, tax_maps, templates, row)
+            prompt_content = build_prompt(args, tax_maps, templates, row, descriptions)
             prompt_for_csv = format_prompt_for_csv(prompt_content)
             b64_img = ""
             if not is_multimodal:

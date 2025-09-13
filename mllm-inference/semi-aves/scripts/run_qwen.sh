@@ -18,6 +18,7 @@ Usage:
     [--image-paths LIST_TXT] \
     [--topk-json TOPK_JSON] \
     [--ref-image-dir REF_IMAGE_DIR_PATH] \
+    [--descriptions-json DESCRIPTIONS_JSON_PATH] \
     [--api-model NAME] [--api-base URL] [--env-file .env] \
     [--output-csv FILE] [--error-file FILE] \
     [--ollama-host URL --ollama-model NAME] \
@@ -35,6 +36,7 @@ IMAGE_PATHS=""
 TOPK_JSON=""
 TAXONOMY_JSON=""
 REF_IMAGE_DIR=""
+DESCRIPTIONS_JSON="" 
 API_MODEL=""
 API_BASE=""
 ENV_FILE=""
@@ -56,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --topk-json) TOPK_JSON="$2"; shift 2;;
     --taxonomy-json) TAXONOMY_JSON="$2"; shift 2;;
     --ref-image-dir) REF_IMAGE_DIR="$2"; shift 2;;
+    --descriptions-json) DESCRIPTIONS_JSON="$2"; shift 2;; 
     --api-model) API_MODEL="$2"; shift 2;;
     --api-base) API_BASE="$2"; shift 2;;
     --env-file) ENV_FILE="$2"; shift 2;;
@@ -96,6 +99,7 @@ CMD=(
 if [[ -n "$IMAGE_PATHS" ]]; then CMD+=("--image-paths" "$IMAGE_PATHS"); fi
 if [[ -n "$TOPK_JSON" ]]; then CMD+=("--topk-json" "$TOPK_JSON"); fi
 if [[ -n "$REF_IMAGE_DIR" ]]; then CMD+=("--ref-image-dir" "$REF_IMAGE_DIR"); fi
+if [[ -n "$DESCRIPTIONS_JSON" ]]; then CMD+=("--descriptions-json" "$DESCRIPTIONS_JSON"); fi # <-- ADDED
 
 # --- Backend-specific logic ---
 case "$BACKEND" in

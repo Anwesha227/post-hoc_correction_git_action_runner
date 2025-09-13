@@ -7,6 +7,6 @@ Step 2: Compare it to each of the following five candidate species. Each candida
 {confidence_note}
 Step 3: Select the most likely match and explain why.
 
-Respond in this format:
+Respond in the following format:
 Most Likely: [1, 2, 3, 4, or 5]
-Reasoning: [your explanation here]
+Explanation: [your explanation here]
