@@ -1,4 +1,4 @@
-name: Nebius Qwen Inference (ZIP, 6 shards, 12-file smoke + merge)
+name: Nebius Qwen Inference (ZIP, 12 shards, subset-file smoke + merge)
 
 on:
   workflow_dispatch:
@@ -33,8 +33,8 @@ jobs:
       fail-fast: false
       max-parallel: ${{ fromJSON(github.event.inputs.parallel) }}
       matrix:
-        shard: [0,1,2,3,4,5]   # 6 shards
-        total: [6]
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11]   # 12 shards
+        total: [12]
 
     steps:
       - name: Checkout repo
