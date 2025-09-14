@@ -104,14 +104,14 @@ def call_text_llm_api(client: OpenAIClient, model: str, prompt: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 2.6: Infuse knowledge from an LLM for sparse entries.")
-    parser.add_argument("--schema-file", required=True, help="Path to the YAML schema file.")
+    parser.add_argument("--schema-file", required=True)
     parser.add_argument("--input-json", required=True, help="Path to the JSON file from Phase 2.5.")
-    parser.add_argument("--taxonomy-json", required=True, help="Path to the main taxonomy file to get species names.")
+    parser.add_argument("--taxonomy-json", required=True, help="Path to the main taxonomy file.")
     parser.add_argument("--output-json", required=True, help="Path to save the final, complete JSON output.")
-    parser.add_argument("--log-file", default="./infusion_log.txt", help="Path to the log file.")
-    parser.add_argument("--api-model", required=True, help="Name of the TEXT-ONLY model to use.")
-    parser.add_argument("--api-base", required=True, help="Base URL for the API.")
-    parser.add_argument("--throttle-sec", type=float, default=1.0, help="Seconds to wait between API calls.")
+    parser.add_argument("--log-file", default="./infusion_log.txt")
+    parser.add_argument("--api-model", required=True, help="Name of the TEXT-ONLY model.")
+    parser.add_argument("--api-base", required=True)
+    parser.add_argument("--throttle-sec", type=float, default=1.0)
     args = parser.parse_args()
 
     # --- Setup ---
@@ -123,62 +123,68 @@ def main():
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     api_key = os.environ.get("NEBIUS_API_KEY") or os.environ.get("HYPERBOLIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        sys.exit("ERROR: An API key must be set as an environment variable.")
+    if not api_key: sys.exit("ERROR: An API key must be set.")
 
     client = OpenAIClient(base_url=args.api_base, api_key=api_key)
     
     # Load all necessary data
     print("Loading data...")
-    with schema_path.open('r', encoding='utf-8') as f:
-        schema = yaml.safe_load(f)
+    with schema_path.open('r', encoding='utf-8') as f: schema = yaml.safe_load(f)
     schema_str = yaml.dump(schema, default_flow_style=False)
     
-    with input_json_path.open('r', encoding='utf-8') as f:
-        species_data = json.load(f)
-    with taxonomy_path.open('r', encoding='utf-8') as f:
-        taxonomy_data = json.load(f)
+    with input_json_path.open('r', encoding='utf-8') as f: species_data_to_process = json.load(f)
+    with taxonomy_path.open('r', encoding='utf-8') as f: taxonomy_data = json.load(f)
+
+    # --- Resume Logic ---
+    final_results: Dict[str, Any] = {}
+    if output_path.exists() and output_path.stat().st_size > 0:
+        print(f"Found existing output file at {output_path}. Resuming...")
+        try:
+            with output_path.open('r', encoding='utf-8') as f:
+                final_results = json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warning: Could not parse existing output file. Starting fresh.")
+            final_results = {}
+    
+    done_ids = set(final_results.keys())
+    print(f"Found {len(done_ids)} already completed entries in the output file. Will skip them.")
 
     # --- Main Infusion Loop ---
     with log_file_path.open("a", encoding="utf-8") as log_f:
-        items_to_process = list(species_data.items())
+        items_to_process = list(species_data_to_process.items())
+        
         for class_id_str, species_entry in tqdm(items_to_process, desc="Infusing Knowledge"):
-            if not class_id_str.isdigit():
+            # Check against the set of already completed IDs from the output file
+            if not class_id_str.isdigit() or class_id_str in done_ids:
                 continue
 
             try:
                 quality_score = calculate_quality_score(species_entry)
                 if quality_score >= MIN_QUALITY_SCORE:
                     log_f.write(f"SKIP | ID: {class_id_str} | Reason: Quality score ({quality_score}) is sufficient.\n")
-                    continue
-                
-                tqdm.write(f"  Infusing knowledge for ID: {class_id_str} (Score: {quality_score})")
-                
-                common_name = taxonomy_data.get(class_id_str, {}).get("most_common_name")
-                scientific_name = taxonomy_data.get(class_id_str, {}).get("name")
-                if not common_name:
-                    raise ValueError(f"Species common name for ID {class_id_str} not found in taxonomy file.")
-                if not scientific_name:
-                    raise ValueError(f"Species scientific name for ID {class_id_str} not found in taxonomy file.")
+                    final_results[class_id_str] = species_entry
+                else:
+                    tqdm.write(f"  Infusing knowledge for ID: {class_id_str} (Score: {quality_score})")
+                    
+                    species_info = taxonomy_data.get(class_id_str, {})
+                    common_name = species_info.get("most_common_name")
+                    scientific_name = species_info.get("name")
+                    
+                    if not common_name or not scientific_name:
+                        raise ValueError(f"Common or scientific name not found for ID {class_id_str}.")
 
-                # Build the text-only prompt using the placeholder function
-                prompt = build_knowledge_infusion_prompt(common_name, scientific_name, schema_str)
-                
-                # Call the text-only LLM
-                llm_response_str = call_text_llm_api(client, args.api_model, prompt)
-                
-                # Clean and parse the response
-                knowledge_data = clean_llm_json_response(llm_response_str)
-                
-                # Merge the new data, filling in the remaining empty fields
-                final_entry = merge_data(species_entry, knowledge_data)
-                species_data[class_id_str] = final_entry
-                
-                log_f.write(f"SUCCESS | ID: {class_id_str} | New Score: {calculate_quality_score(final_entry)}\n")
-                
-                # Save progress incrementally
+                    prompt = build_knowledge_infusion_prompt(common_name, scientific_name, schema_str)
+                    llm_response_str = call_text_llm_api(client, args.api_model, prompt)
+                    knowledge_data = clean_llm_json_response(llm_response_str)
+                    
+                    final_entry = merge_data(species_entry, knowledge_data)
+                    final_results[class_id_str] = final_entry
+                    
+                    log_f.write(f"SUCCESS | ID: {class_id_str} | New Score: {calculate_quality_score(final_entry)}\n")
+
+                # Save the updated 'final_results' dictionary after every successful operation
                 with output_path.open("w", encoding="utf-8") as out_f:
-                    json.dump(species_data, out_f, indent=2)
+                    json.dump(final_results, out_f, indent=2)
 
                 time.sleep(args.throttle_sec)
 
@@ -188,6 +194,3 @@ def main():
                 continue
 
     print(f"\nKnowledge infusion complete. Final data saved to '{output_path}'.")
-
-if __name__ == "__main__":
-    main()

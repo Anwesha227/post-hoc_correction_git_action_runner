@@ -184,6 +184,7 @@ def _conf_str(p: Optional[float]) -> str:
     except (ValueError, TypeError): return ""
 
 def format_description_for_prompt(desc_json: Dict) -> str:
+    """Converts a species description JSON object into a clean, readable text block."""
     lines = []
     for category, attributes in desc_json.items():
         category_title = category.replace('_', ' ').title()
@@ -219,12 +220,12 @@ def build_prompt_top5(row: pd.Series, tax_maps: Dict, templates: Dict[str, str],
     species_list_content = "\n".join(entry_lines)
     confidence_note_content = ""
     if use_confidence:
-        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. " 
-                                   "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
+        confidence_note_content = ("Note on confidence: The confidence shown for the highest-ranked candidate (p1) reflects how certain the underlying model was. "
+                                   "Use it only as a signal of certainty. If p1 appears strong and aligns with visible evidence, you may lean toward that candidate. "
                                    "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     return base_template.format(species_list=species_list_content, confidence_note=confidence_note_content)
 
-def build_prompt_zeroshot(tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, **kwargs) -> str:
+def build_prompt_zeroshot(tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace) -> str:
     ask_for_explanation = "explanation" in args.prompt_template
     use_all200_list = "all200" in args.prompt_template
     if use_all200_list:
@@ -255,48 +256,33 @@ def build_prompt_multimodal_16shot(row: pd.Series, tax_maps: Dict, templates: Di
     for i in range(1, 6):
         class_id = row.get(f"pred{i}")
         if pd.isna(class_id): continue
-        
-        # --- MODIFIED BLOCK ---
         meta = tax_maps['id2meta'].get(int(class_id), {})
-        formatted_name = _format_species_sci(meta) # Use the rich name format
-        # --- END MODIFICATION ---
-        
+        formatted_name = _format_species_sci(meta)
         conf_str_val = _conf_str(row.get(f"conf{i}")) if use_confidence else ""
         candidate_text = f"Candidate {i}: {formatted_name}{conf_str_val}"
-        
         ref_image_path = Path(args.ref_image_dir) / f"{int(class_id)}.jpg"
         if not ref_image_path.exists(): raise FileNotFoundError(f"Reference image not found: {ref_image_path}")
         ref_img_b64 = encode_image_b64(ref_image_path)
-        
         messages.append({"type": "text", "text": candidate_text})
         messages.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{ref_img_b64}"}})
-        
     return messages
 
 def build_prompt_top5_with_descriptions(row: pd.Series, tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, descriptions: Dict) -> str:
     base_template = templates.get("top5_with_descriptions")
     if not base_template: raise KeyError("Could not find 'top5_with_descriptions.txt'.")
     use_confidence = "with-confidence" in args.prompt_template
-    
     entry_lines = []
     for i in range(1, 6):
         class_id = row.get(f"pred{i}")
         if pd.isna(class_id): continue
         class_id_str = str(int(class_id))
-        
-        # --- MODIFIED BLOCK ---
         meta = tax_maps['id2meta'].get(int(class_id), {})
-        formatted_name = _format_species_sci(meta) # Use the rich name format
-        # --- END MODIFICATION ---
-        
+        formatted_name = _format_species_sci(meta)
         conf_str_val = _conf_str(row.get(f"conf{i}")) if use_confidence else ""
-        
         description_json = descriptions.get(class_id_str)
         if not description_json: raise ValueError(f"Description for class ID {class_id_str} not found.")
         description_text = format_description_for_prompt(description_json)
-        
         entry_lines.append(f"Candidate {i}: {formatted_name}{conf_str_val}\n{description_text}\n")
-
     species_list_content = "\n".join(entry_lines)
     confidence_note_content = ""
     if use_confidence:
@@ -304,6 +290,40 @@ def build_prompt_top5_with_descriptions(row: pd.Series, tax_maps: Dict, template
                                    "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
                                    "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
     return base_template.format(species_list_with_descriptions=species_list_content, confidence_note=confidence_note_content)
+
+def build_prompt_multimodal_with_descriptions(row: pd.Series, tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, descriptions: Dict) -> List[Dict[str, Any]]:
+    """Builds the ultimate prompt with candidate names, descriptions, and reference images."""
+    base_template = templates.get("top5_multimodal_with_descriptions")
+    if not base_template: raise KeyError("Could not find 'top5_multimodal_with_descriptions.txt'.")
+    use_confidence = "with-confidence" in args.prompt_template
+    query_image_path = Path(args.image_dir) / row["image_path"]
+    if not query_image_path.exists(): raise FileNotFoundError(f"Query image not found: {query_image_path}")
+    query_img_b64 = encode_image_b64(query_image_path)
+    confidence_note_content = ""
+    if use_confidence:
+        confidence_note_content = ("Note on confidence: The confidence shown for candidate 1 (p1) reflects how certain the underlying model was. " 
+                                   "Use p1 only as a signal of the model's certainty. If p1 appears strong and matches the visible evidence, you may lean toward #1. "
+                                   "If p1 appears weak or the image contradicts it, give more weight to visual evidence and consider other candidates.\n\n")
+    # We pass an empty string for the species list placeholder, as it's not used in this multimodal prompt structure
+    final_template_text = base_template.format(species_list_with_descriptions_and_images="", confidence_note=confidence_note_content)
+    messages = [{"type": "text", "text": final_template_text}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{query_img_b64}"}}]
+    for i in range(1, 6):
+        class_id = row.get(f"pred{i}")
+        if pd.isna(class_id): continue
+        class_id_str = str(int(class_id))
+        meta = tax_maps['id2meta'].get(int(class_id), {})
+        formatted_name = _format_species_sci(meta)
+        conf_str_val = _conf_str(row.get(f"conf{i}")) if use_confidence else ""
+        description_json = descriptions.get(class_id_str)
+        if not description_json: raise ValueError(f"Description for class ID {class_id_str} not found.")
+        description_text = format_description_for_prompt(description_json)
+        ref_image_path = Path(args.ref_image_dir) / f"{class_id_str}.jpg"
+        if not ref_image_path.exists(): raise FileNotFoundError(f"Reference image not found: {ref_image_path}")
+        ref_img_b64 = encode_image_b64(ref_image_path)
+        messages.append({"type": "text", "text": f"--- Candidate {i}: {formatted_name}{conf_str_val} ---"})
+        messages.append({"type": "text", "text": f"Description:\n{description_text}"})
+        messages.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{ref_img_b64}"}})
+    return messages
 
 PROMPT_BUILDER_MAP = {
     'top5-simple': build_prompt_top5, 'top5-simple-with-confidence': build_prompt_top5,
@@ -314,6 +334,8 @@ PROMPT_BUILDER_MAP = {
     'top5-multimodal-16shot': build_prompt_multimodal_16shot, 'top5-multimodal-16shot-with-confidence': build_prompt_multimodal_16shot,
     'top5_with_descriptions': build_prompt_top5_with_descriptions,
     'top5_with_descriptions-with-confidence': build_prompt_top5_with_descriptions,
+    'top5_multimodal_with_descriptions': build_prompt_multimodal_with_descriptions,
+    'top5_multimodal_with_descriptions-with-confidence': build_prompt_multimodal_with_descriptions,
 }
 
 def build_prompt(args: argparse.Namespace, tax_maps: Dict, templates: Dict[str, str], row: pd.Series, descriptions: Optional[Dict] = None) -> Union[str, list]:
@@ -377,8 +399,7 @@ def call_ollama(ollama_host: str, model: str, prompt: Union[str, list], b64_img:
 # === Main Execution Logic =====================================================
 # ==============================================================================
 def main():
-    ap = argparse.ArgumentParser(description="Unified Qwen VL Inference Script with External Prompt Templates.")
-    # --- This now automatically uses the keys from our map for validation ---
+    ap = argparse.ArgumentParser(description="Unified Qwen VL Inference Script.")
     ap.add_argument("--prompt-template", required=True, choices=PROMPT_BUILDER_MAP.keys())
     ap.add_argument("--prompt-dir", default="./prompt_templates")
     ap.add_argument("--backend", required=True, choices=["nebius", "hyperbolic", "ollama"])
@@ -389,21 +410,20 @@ def main():
     ap.add_argument("--image-dir", required=True)
     ap.add_argument("--image-paths", help="Path to a text file with a list of relative image paths to process.")
     ap.add_argument("--taxonomy-json", required=True)
-    ap.add_argument("--topk-json", help="Path to top-k predictions JSON (REQUIRED for all 'top5' templates).")
+    ap.add_argument("--topk-json", help="Path to top-k predictions JSON (for 'top5' templates).")
     ap.add_argument("--ref-image-dir", help="Path to pre-generated reference images (for multimodal prompts).")
+    ap.add_argument("--descriptions-json", help="Path to the JSON file with generated species descriptions.")
     ap.add_argument("--output-csv", required=True)
     ap.add_argument("--error-file", required=True)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--print-first-prompt", action="store_true")
     ap.add_argument("--throttle-sec", type=float, default=0.5)
-    ap.add_argument("--descriptions-json", help="Path to the JSON file with generated species descriptions.")
     args = ap.parse_args()
 
     # --- Validate arguments ---
     is_top5 = args.prompt_template.startswith("top5")
     is_multimodal = 'multimodal' in args.prompt_template
     uses_descriptions = 'with_descriptions' in args.prompt_template
-
     if not args.image_paths: sys.exit("ERROR: --image-paths is required.")
     if is_top5 and not args.topk_json: sys.exit(f"ERROR: --topk-json is required for '{args.prompt_template}'.")
     if is_multimodal and not args.ref_image_dir: sys.exit(f"ERROR: --ref-image-dir is required for '{args.prompt_template}'.")
@@ -420,11 +440,10 @@ def main():
     elif args.backend == "ollama":
         if not args.ollama_host or not args.ollama_model: sys.exit("ERROR: --ollama-host and --ollama-model are required.")
         model_name = args.ollama_model
-
-    # --- Unified Data Loading Pipeline ---
+    
+    # --- Load Data ---
     templates = load_prompt_templates(Path(args.prompt_dir))
     tax_maps = build_taxonomy_maps(Path(args.taxonomy_json))
-
     descriptions = None
     if args.descriptions_json:
         print(f">> Loading species descriptions from {args.descriptions_json}")
@@ -460,7 +479,6 @@ def main():
     # --- First Prompt Preview ---
     if not df.empty:
         first_row = df.iloc[0]
-        # Pass the whole args object to the builder
         first_prompt = build_prompt(args, tax_maps, templates, first_row, descriptions)
         print("=== First Sample Prompt ===")
         if isinstance(first_prompt, list):

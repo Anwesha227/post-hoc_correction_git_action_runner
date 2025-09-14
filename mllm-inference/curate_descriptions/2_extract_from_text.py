@@ -21,6 +21,7 @@ from typing import Dict, Any
 
 from openai import OpenAI as OpenAIClient
 from tqdm import tqdm
+import re
 
 def load_and_prepare_schema(schema_path: Path) -> str:
     """Loads the YAML schema and formats it as a string for the prompt."""
@@ -54,16 +55,19 @@ You are an expert data architect and ornithologist's assistant. Your task is to 
 def clean_llm_json_response(response_text: str) -> Dict[str, Any]:
     """
     Cleans and parses the LLM's response to ensure it's valid JSON.
-    It handles common LLM mistakes like adding markdown code blocks or stray text.
+    It uses a regular expression to find the JSON block, which is more
+    robust against surrounding text and markdown.
     """
-    start_brace = response_text.find('{')
-    end_brace = response_text.rfind('}')
+    # This regex finds a JSON object that starts with { and ends with }
+    # It handles nested braces correctly.
+    match = re.search(r'\{.*\}', response_text, re.DOTALL)
     
-    if start_brace == -1 or end_brace == -1:
+    if not match:
         raise ValueError(f"No valid JSON object found in the LLM response. Response text: {response_text[:500]}...")
         
-    json_str = response_text[start_brace : end_brace + 1]
+    json_str = match.group(0)
     
+    # Parse the cleaned string into a Python dictionary
     return json.loads(json_str)
 
 def call_llm_api(client: OpenAIClient, model: str, prompt: str) -> str:

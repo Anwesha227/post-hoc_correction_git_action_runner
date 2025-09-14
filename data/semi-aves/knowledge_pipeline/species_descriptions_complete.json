@@ -8952,5 +8952,50 @@
     "juvenile": {
       "overall_description": "grey-blue backs, with a more faded grey-blue colour on their chest, and usually have a blotched pattern on their feet which fades as they grow up into adulthood"
     }
+  },
+  "87": {
+    "adult_female": {
+      "head_pattern": "",
+      "crown_color": "black",
+      "throat_color": "black",
+      "bill_color": "black",
+      "back_and_upperparts_color": "iridescent black",
+      "back_pattern": "",
+      "breast_color": "black",
+      "breast_pattern": "",
+      "underparts_color": "iridescent black",
+      "wing_color": "iridescent black",
+      "wing_pattern": "",
+      "tail_color": "iridescent black",
+      "tail_pattern": ""
+    },
+    "adult_male": {
+      "head_pattern": "",
+      "crown_color": "black",
+      "throat_color": "black",
+      "bill_color": "black",
+      "back_and_upperparts_color": "iridescent black",
+      "back_pattern": "",
+      "breast_color": "black",
+      "breast_pattern": "",
+      "underparts_color": "iridescent black",
+      "wing_color": "iridescent black",
+      "wing_pattern": "",
+      "tail_color": "iridescent black",
+      "tail_pattern": ""
+    },
+    "common": {
+      "size_category": "large",
+      "primary_shape": "distinctive",
+      "bill_shape": "slightly less pronounced than common raven",
+      "wing_shape": "broad and rounded",
+      "tail_shape": "almost lozenge-shaped (when compared to common raven)",
+      "leg_color": "black",
+      "eye_color": "dark brown",
+      "habitat": "Virtually all types of country from wilderness, farmland, parks, open woodland to towns and major cities, absent only from tundra habitat"
+    },
+    "juvenile": {
+      "overall_description": "similar to adults but with shorter wings and tail, and a paler, more brownish tinge to the plumage"
+    }
   }
 }
