@@ -1,0 +1,252 @@
+name: Nebius Qwen Inference (ZIP, 12 shards, subset-file smoke + merge)
+
+on:
+  workflow_dispatch:
+    inputs:
+      drive_zip_file_id:
+        description: "Google Drive FILE ID of the complete semi-aves.zip (test + reference images)"
+        required: true
+      api_model:
+        description: "Nebius model name"
+        required: false
+        default: "Qwen/Qwen2.5-VL-72B-Instruct"
+      api_base:
+        description: "Nebius OpenAI-compatible base URL"
+        required: false
+        default: "https://api.studio.nebius.com/v1/"
+      parallel:
+        description: "How many shards to run in parallel (e.g., 6, 12)"
+        required: false
+        default: "6"
+      subset_count:
+        description: "Run only first N lines from data/semi-aves/test.txt (0 = full). For smoke test use 12."
+        required: false
+        default: "12"
+
+jobs:
+  run:
+    name: "Shard ${{ matrix.shard }} of ${{ matrix.total }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # Hard limit is 360min on public repos, this is a safety net
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(github.event.inputs.parallel) }}
+      matrix:
+        # Use 12 shards to keep runtimes below the 6-hour limit
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11]
+        total: [12]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python3 -m pip install -U pip
+          python3 -m pip install -r requirements.txt || true
+          python3 -m pip install --upgrade "openai>=1.30.0" python-dotenv httpx pandas numpy pillow tqdm requests gdown pyyaml
+          python3 -m pip uninstall -y pyarrow || true
+
+      - name: Install unzip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
+      - name: Download dataset from GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }} # This is an automatically provided secret
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/dataset
+          # This command finds the latest release and downloads the specific zip file.
+          gh release download v1.0.0-dataset --pattern "semi-aves-complete.zip" --output /tmp/dataset/semi-aves.zip
+          unzip -q /tmp/dataset/semi-aves.zip -d /tmp/dataset
+
+      - name: Sanity check dataset
+        run: |
+          set -euxo pipefail
+          if [ ! -d "/tmp/dataset/test" ]; then
+            echo "ERROR: Could not find the '/tmp/dataset/test' directory after unzipping."
+            echo "Contents of /tmp/dataset:"
+            ls -la /tmp/dataset
+            exit 1
+          fi
+          # Optional: Check for reference images if they are expected in the ZIP
+          if [ ! -d "/tmp/dataset/pregenerated_references_16shot" ]; then
+             echo "WARNING: Reference image directory '/tmp/dataset/pregenerated_references_16shot' not found."
+          fi
+          COUNT=$(find "/tmp/dataset/test" -type f | wc -l)
+          echo "Found $COUNT files under /tmp/dataset/test/"
+          [ "$COUNT" -ge 7000 ]
+
+      # --- CORRECTED STEP ---
+      - name: Expose dataset at the correct relative path
+        run: |
+          set -euxo pipefail
+          # The location the local script expects to find the data.
+          EXPECTED_DATA_LOCATION="${{ github.workspace }}/datasets/semi-aves"
+
+          # Create the target directory structure.
+          mkdir -p "$EXPECTED_DATA_LOCATION"
+          
+          # Use 'cp' (copy) instead of 'mv' (move) for robustness.
+          # The -r flag means 'recursive' (copy directories).
+          # The -n flag means 'no-clobber' (do not overwrite an existing file).
+          # This command copies the two data directories we need into the expected location.
+          cp -r -n /tmp/dataset/test "$EXPECTED_DATA_LOCATION/"
+          cp -r -n /tmp/dataset/pregenerated_references_16shot "$EXPECTED_DATA_LOCATION/"
+          
+          echo "Copied data directories to ${EXPECTED_DATA_LOCATION}"
+          
+          # Verify the final structure. This command will now succeed.
+          echo "Verifying final path the script will use:"
+          ls -la "${EXPECTED_DATA_LOCATION}/test"
+
+      - name: Restore cached results
+        id: cache-results-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: mllm-inference/semi-aves/mllm_output/
+          key: ${{ runner.os }}-results-${{ github.run_id }}-shard-${{ matrix.shard }}
+
+      - name: Provide .env for run_qwen.sh (NEBIUS_API_KEY)
+        env:
+          NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
+        run: |
+          echo "NEBIUS_API_KEY=${NEBIUS_API_KEY}" > .env
+          echo "NEBIUS_API_BASE=${{ github.event.inputs.api_base }}" >> .env
+          echo ".env created at repo root"
+
+      - name: Make scripts executable
+        run: |
+          chmod +x mllm-inference/semi-aves/scripts/run_nebius_72b.sh
+          chmod +x mllm-inference/semi-aves/scripts/run_qwen.sh
+
+      - name: Limit test.txt to first N lines (smoke)
+        env:
+          N: ${{ github.event.inputs.subset_count }}
+        run: |
+          set -euxo pipefail
+          if [ -n "$N" ] && [ "$N" != "0" ]; then
+            cp data/semi-aves/test.txt data/semi-aves/test_full.txt
+            head -n "$N" data/semi-aves/test_full.txt > data/semi-aves/test.txt
+            echo "Using first $N lines:"
+            cat data/semi-aves/test.txt
+          else
+            echo "subset_count is 0 — running full list."
+          fi
+
+      - name: Split test.txt into shards
+        run: |
+          split -n l/${{ matrix.total }} -d -a 2 \
+            data/semi-aves/test.txt data/semi-aves/test_part --additional-suffix=.txt
+          ls -la data/semi-aves/test_part*.txt
+          wc -l data/semi-aves/test_part*.txt
+
+      - name: Use this shard as test.txt (zero-padded index)
+        run: |
+          SH=$(printf "%02d" ${{ matrix.shard }})
+          cp "data/semi-aves/test_part${SH}.txt" data/semi-aves/test.txt
+          echo "Preview of this shard:"
+          sed -n '1,20p' data/semi-aves/test.txt
+          echo "Shard line count:"; wc -l data/semi-aves/test.txt
+
+      - name: Clear proxy env (guard)
+        run: |
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
+
+      - name: Run your wrapper (which calls run_qwen.sh)
+        run: |
+          mllm-inference/semi-aves/scripts/run_nebius_72b.sh
+
+      - name: Save results to cache
+        if: always()
+        id: cache-results-save
+        uses: actions/cache/save@v4
+        with:
+          path: mllm-inference/semi-aves/mllm_output/
+          key: ${{ runner.os }}-results-${{ github.run_id }}-shard-${{ matrix.shard }}
+
+      - name: Collect & upload outputs (tag with shard id)
+        run: |
+          set -euxo pipefail
+          mkdir -p outputs
+          shopt -s nullglob
+          for f in mllm-inference/semi-aves/mllm_output/*.{csv,txt,log}; do
+            base="$(basename "$f")"
+            ext="${base##*.}"
+            stem="${base%.*}"
+            cp "$f" "outputs/${stem}_shard$(printf "%02d" ${{ matrix.shard }}).${ext}"
+          done
+          find outputs -maxdepth 1 -type f -print || true
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-results-shard-${{ matrix.shard }}
+          path: outputs/
+          if-no-files-found: warn
+
+  merge:
+    name: Merge shard outputs (preserve wrapper filenames)
+    needs: run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwen-results-shard-*
+          merge-multiple: true
+          path: merged_inputs
+  
+      - name: Merge CSVs to wrapper's filename
+        run: |
+          set -euxo pipefail
+          shopt -s nullglob
+          mapfile -t CSVs < <(find merged_inputs -type f -name '*.csv' | sort)
+          if [ "${#CSVs[@]}" -eq 0 ]; then
+            echo "No CSVs found to merge" >&2; exit 1
+          fi
+          first="${CSVs[0]}"
+          bn="$(basename "$first")"
+          ext="${bn##*.}"
+          stem="${bn%.*}"
+          base="${stem%_shard*}"
+          out_csv="${base}.${ext}"
+  
+          head -n 1 "$first" > "$out_csv"
+          for f in "${CSVs[@]}"; do
+            tail -n +2 "$f" >> "$out_csv"
+          done
+          wc -l "$out_csv"; ls -lh "$out_csv"
+  
+      - name: Merge error logs to wrapper's filename
+        run: |
+          set -euxo pipefail
+          shopt -s nullglob
+          mapfile -t ERRs < <(find merged_inputs -type f -name '*errors*.txt' | sort)
+          if [ "${#ERRs[@]}" -gt 0 ]; then
+            first="${ERRs[0]}"
+            bn="$(basename "$first")"
+            stem="${bn%.*}"
+            base="${stem%_shard*}"
+            out_err="${base}.txt"
+            cat "${ERRs[@]}" > "$out_err"
+            ls -lh "$out_err"
+          else
+            echo "No shard error logs found" > no_errors.txt
+          fi
+  
+      - name: Upload merged artifacts (original names)
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-results-merged
+          path: |
+            *.csv
+            *_errors.txt
+            no_errors.txt
