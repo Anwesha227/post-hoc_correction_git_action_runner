@@ -293,8 +293,11 @@ def build_prompt_top5_with_descriptions(row: pd.Series, tax_maps: Dict, template
 
 def build_prompt_multimodal_with_descriptions(row: pd.Series, tax_maps: Dict, templates: Dict[str, str], args: argparse.Namespace, descriptions: Dict) -> List[Dict[str, Any]]:
     """Builds the ultimate prompt with candidate names, descriptions, and reference images."""
-    base_template = templates.get("top5_multimodal_with_descriptions")
-    if not base_template: raise KeyError("Could not find 'top5_multimodal_with_descriptions.txt'.")
+    # Dynamically determine the template file to use.
+    # This allows this one function to serve both the 'choice' and 'ranking' prompts.
+    base_template_name = args.prompt_template.split('-with-confidence')[0]
+    base_template = templates.get(base_template_name)
+    if not base_template: raise KeyError(f"Could not find '{base_template_name}.txt' in prompt templates.")
     use_confidence = "with-confidence" in args.prompt_template
     query_image_path = Path(args.image_dir) / row["image_path"]
     if not query_image_path.exists(): raise FileNotFoundError(f"Query image not found: {query_image_path}")
@@ -336,6 +339,8 @@ PROMPT_BUILDER_MAP = {
     'top5_with_descriptions-with-confidence': build_prompt_top5_with_descriptions,
     'top5_multimodal_with_descriptions': build_prompt_multimodal_with_descriptions,
     'top5_multimodal_with_descriptions-with-confidence': build_prompt_multimodal_with_descriptions,
+    'top5_multimodal_with_descriptions_ranking': build_prompt_multimodal_with_descriptions,
+    'top5_multimodal_with_descriptions_ranking-with-confidence': build_prompt_multimodal_with_descriptions,
 }
 
 def build_prompt(args: argparse.Namespace, tax_maps: Dict, templates: Dict[str, str], row: pd.Series, descriptions: Optional[Dict] = None) -> Union[str, list]:
