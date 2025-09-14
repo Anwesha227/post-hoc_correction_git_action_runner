@@ -18,7 +18,7 @@ echo $PROJECT_ROOT
 #    - Multimodal: "top5-multimodal-16shot", "top5-multimodal-16shot-with-confidence"
 #    - Description-based: "top5_with_descriptions", "top5_with_descriptions-with-confidence"
 
-PROMPT_TEMPLATE="top5_with_descriptions-with-confidence"
+PROMPT_TEMPLATE="top5-multimodal-16shot-with-confidence"
 
 
 # 2. The base model name affects output filenames and data paths.
