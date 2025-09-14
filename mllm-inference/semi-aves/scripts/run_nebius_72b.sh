@@ -17,8 +17,9 @@ echo $PROJECT_ROOT
 #    - Standard: "top5-sci-with-confidence", "zeroshot-explanation", etc.
 #    - Multimodal: "top5-multimodal-16shot", "top5-multimodal-16shot-with-confidence"
 #    - Description-based: "top5_with_descriptions", "top5_with_descriptions-with-confidence"
-# PROMPT_TEMPLATE="top5_multimodal_with_descriptions-with-confidence"
-PROMPT_TEMPLATE="top5_with_descriptions-with-confidence"
+
+PROMPT_TEMPLATE="top5_multimodal_with_descriptions-with-confidence"
+
 
 # 2. The base model name affects output filenames and data paths.
 #    Choose from vitb32_openclip_laion400m, resnet50_imagenet_pretrained, resnet50_inat_pretrained, dinov2_vitb14_reg, dinov3_vitb16
